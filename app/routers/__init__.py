@@ -16,25 +16,10 @@ from starlette.staticfiles import StaticFiles
 class BaseRouter:
     def __init__(self, server: FastAPI):
         self.server = server
-        self.v1_router = APIRouter(prefix="/v1")
-
-    def __getV1SystemRoute(self):
-        from app.routers.v1.system.auth import router_auth
-        from app.routers.v1.system.route import router_route
-        from app.routers.v1.system.manage import router_manage
-
-        self.v1_router.include_router(router_auth)
-        self.v1_router.include_router(router_route)
-        self.v1_router.include_router(router_manage)
-
-    def includeV1Route(self):
-
-        self.__getV1SystemRoute()
-        self.server.include_router(self.v1_router)
 
     def registerRouter(self):
         self.server.mount("/static", StaticFiles(directory="static"), name="static")
-        self.includeV1Route()
+
 
 
 __all__ = ["BaseRouter"]

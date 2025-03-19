@@ -11,9 +11,6 @@ All rights reserved.
 import asyncio
 import random
 from datetime import datetime, timedelta
-
-import aiohttp
-
 from config.settings import appSettings
 
 
@@ -105,29 +102,7 @@ async def async_execute_tasks(tasks, max_concurrency: int = None, timeout: int =
     return results
 
 
-async def get_public_ip():
-    """
-    异步获取当前设备的公网IP地址。
-
-    该函数通过发送HTTP请求来获取设备的公网IP地址。如果请求成功且响应状态码为200，
-    则返回获取到的IP地址。如果请求失败或响应状态码非200，则返回本地回环地址'127.0.0.1'。
-    若在请求过程中遇到aiohttp库相关的错误，则返回具体的错误信息。
-
-    Returns:
-        str: 设备的公网IP地址或本地回环地址，或者请求错误信息。
-    """
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get('http://ifconfig.me/ip') as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    return "127.0.0.1"
-    except aiohttp.ClientError as e:
-        return f"请求错误: {e}"
-
 __all__ = [
-    "get_public_ip",
     "generate_chinese",
     'is_within_last_seven_days',
     'async_execute_tasks',

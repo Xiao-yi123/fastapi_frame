@@ -120,17 +120,3 @@ __all__ = [
     'jwtGenerator',
     'jwtParse',
 ]
-
-# 示例使用
-if __name__ == "__main__":
-    # 计算字符串的SHA-256哈希
-    # token = ''
-    # text = "123456"+token
-    # s1 = base64.encodestring('hello world')
-    # s2 = base64.decodestring(s1)
-    # print(s1,s2)
-    data = {"user_name": "张三", "uid": 1234567, "phone": "17600000000"}
-    token = jwtGenerator(data=data)
-    print("token", token)
-    # token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjMsImlhdCI6MTcyMjc2MTI0MywiZXhwIjoxNzIyNzY0ODQzLCJpc3MiOiJcdTczM2ZcdTc4MDFcdThiYjAiLCJkYXRhIjp7ImFkbWluIjoiYWRtaW4ifX0.OOAhlj7Ow2geOpH9bEY7yRpx__fzbxd8VGRmKBEmXls'
-    print(jwtParse(token))

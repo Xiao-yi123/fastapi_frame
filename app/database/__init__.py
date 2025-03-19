@@ -14,7 +14,6 @@ from .schemas import *
 
 from .curd.RedisCURD import *
 from .curd.BaseCRUD import *
-from .curd.UserCRUD import *
 
 
 

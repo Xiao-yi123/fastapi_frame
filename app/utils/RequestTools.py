@@ -255,5 +255,4 @@ class RequestTools:
             # 如果出现异常，返回包含原始 URL 和错误信息的字典
             return {"original_url": url, "error": str(e)}
 
-
 __all__ = ["RequestTools"]
