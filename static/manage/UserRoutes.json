@@ -1,0 +1,527 @@
+[
+    {
+        "name": "home",
+        "path": "/home",
+        "component": "layout.base$view.home",
+        "meta": {
+            "title": "home",
+            "i18nKey": "route.home",
+            "icon": "mdi:monitor-dashboard",
+            "order": 1
+        }
+    },
+    {
+        "name": "function",
+        "path": "/function",
+        "component": "layout.base",
+        "meta": {
+            "title": "function",
+            "i18nKey": "route.function",
+            "icon": "icon-park-outline:all-application",
+            "order": 6,
+            "roles": [
+                "R_ADMIN",
+                "R_SUPER"
+            ]
+        },
+        "children": [
+            {
+                "name": "function_hide-child",
+                "path": "/function/hide-child",
+                "meta": {
+                    "title": "function_hide-child",
+                    "i18nKey": "route.function_hide-child",
+                    "icon": "material-symbols:filter-list-off",
+                    "order": 2
+                },
+                "redirect": "/function/hide-child/one",
+                "children": [
+                    {
+                        "name": "function_hide-child_one",
+                        "path": "/function/hide-child/one",
+                        "component": "view.function_hide-child_one",
+                        "meta": {
+                            "title": "function_hide-child_one",
+                            "i18nKey": "route.function_hide-child_one",
+                            "icon": "material-symbols:filter-list-off",
+                            "hideInMenu": true,
+                            "activeMenu": "function_hide-child"
+                        }
+                    },
+                    {
+                        "name": "function_hide-child_three",
+                        "path": "/function/hide-child/three",
+                        "component": "view.function_hide-child_three",
+                        "meta": {
+                            "title": "function_hide-child_three",
+                            "i18nKey": "route.function_hide-child_three",
+                            "hideInMenu": true,
+                            "activeMenu": "function_hide-child"
+                        }
+                    },
+                    {
+                        "name": "function_hide-child_two",
+                        "path": "/function/hide-child/two",
+                        "component": "view.function_hide-child_two",
+                        "meta": {
+                            "title": "function_hide-child_two",
+                            "i18nKey": "route.function_hide-child_two",
+                            "hideInMenu": true,
+                            "activeMenu": "function_hide-child"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "function_multi-tab",
+                "path": "/function/multi-tab",
+                "component": "view.function_multi-tab",
+                "meta": {
+                    "title": "function_multi-tab",
+                    "i18nKey": "route.function_multi-tab",
+                    "icon": "ic:round-tab",
+                    "multiTab": true,
+                    "hideInMenu": true,
+                    "activeMenu": "function_tab"
+                }
+            },
+            {
+                "name": "function_request",
+                "path": "/function/request",
+                "component": "view.function_request",
+                "meta": {
+                    "title": "function_request",
+                    "i18nKey": "route.function_request",
+                    "icon": "carbon:network-overlay",
+                    "order": 3
+                }
+            },
+            {
+                "name": "function_super-page",
+                "path": "/function/super-page",
+                "component": "view.function_super-page",
+                "meta": {
+                    "title": "function_super-page",
+                    "i18nKey": "route.function_super-page",
+                    "icon": "ic:round-supervisor-account",
+                    "order": 5,
+                    "roles": [
+                        "R_SUPER",
+                        "admin"
+                    ]
+                }
+            },
+            {
+                "name": "function_tab",
+                "path": "/function/tab",
+                "component": "view.function_tab",
+                "meta": {
+                    "title": "function_tab",
+                    "i18nKey": "route.function_tab",
+                    "icon": "ic:round-tab",
+                    "order": 1
+                }
+            },
+            {
+                "name": "function_toggle-auth",
+                "path": "/function/toggle-auth",
+                "component": "view.function_toggle-auth",
+                "meta": {
+                    "title": "function_toggle-auth",
+                    "i18nKey": "route.function_toggle-auth",
+                    "icon": "ic:round-construction",
+                    "order": 4
+                }
+            }
+        ]
+    },
+    {
+        "name": "xhs",
+        "path": "/xhs",
+        "component": "layout.base",
+        "meta": {
+            "title": "小红书",
+            "i18nKey": "route.xhs",
+            "icon": "simple-icons:xiaohongshu",
+            "order": 7,
+            "hideInMenu": true
+        },
+        "children": [
+            {
+                "name": "xhs_access-list",
+                "path": "/xhs/access-list",
+                "component": "view.xhs_access-list",
+                "meta": {
+                    "title": "xhs_access-list",
+                    "i18nKey": "route.xhs_access-list",
+                    "icon": "material-symbols:person",
+                    "order": 1
+                }
+            },
+            {
+                "name": "xhs_group-manage",
+                "path": "/xhs/group-manage",
+                "component": "view.xhs_group-manage",
+                "meta": {
+                    "title": "xhs_group-manage",
+                    "i18nKey": "route.xhs_group-manage",
+                    "icon": "material-symbols:group",
+                    "order": 2
+                }
+            },
+            {
+                "name": "xhs_node-manage",
+                "path": "/xhs/node-manage",
+                "component": "view.xhs_node-manage",
+                "meta": {
+                    "title": "xhs_node-manage",
+                    "i18nKey": "route.xhs_node-manage",
+                    "icon": "ic:outline-speaker-notes",
+                    "order": 3
+                }
+            },
+            {
+                "name": "xhs_release",
+                "path": "/xhs/release",
+                "component": "view.xhs_release",
+                "props": true,
+                "meta": {
+                    "title": "xhs_release",
+                    "i18nKey": "route.xhs_release",
+                    "icon": "ic:outline-drive-folder-upload",
+                    "order": 4,
+                    "constant": true
+                }
+            },
+            {
+                "name": "xhs_send-log",
+                "path": "/xhs/send-log",
+                "component": "view.xhs_send-log",
+                "meta": {
+                    "title": "xhs_send-log",
+                    "i18nKey": "route.xhs_send-log",
+                    "icon": "ic:outline-history",
+                    "order": 5
+                }
+            }
+        ]
+    },
+    {
+        "name": "manage",
+        "path": "/manage",
+        "component": "layout.base",
+        "meta": {
+            "title": "manage",
+            "i18nKey": "route.manage",
+            "icon": "carbon:cloud-service-management",
+            "order": 9,
+            "roles": [
+                "R_ADMIN",
+                "R_SUPER"
+            ]
+        },
+        "children": [
+            {
+                "name": "manage_user",
+                "path": "/manage/user",
+                "component": "view.manage_user",
+                "meta": {
+                    "title": "manage_user",
+                    "i18nKey": "route.manage_user",
+                    "icon": "ic:round-manage-accounts",
+                    "order": 1,
+                    "roles": [
+                        "R_ADMIN",
+                        "R_SUPER"
+                    ]
+                }
+            },
+            {
+                "name": "manage_user-detail",
+                "path": "/manage/user-detail/:id",
+                "component": "view.manage_user-detail",
+                "props": true,
+                "meta": {
+                    "title": "manage_user-detail",
+                    "i18nKey": "route.manage_user-detail",
+                    "activeMenu": "manage_user",
+                    "hideInMenu": true
+                }
+            }
+        ]
+    },
+    {
+        "name": "account-pool",
+        "path": "/account-pool",
+        "component": "layout.base",
+        "meta": {
+            "title": "account-pool",
+            "i18nKey": "route.account-pool",
+            "icon": "material-symbols:supervisor-account-outline",
+            "order": 7,
+            "roles": [
+                "R_ADMIN",
+                "R_SUPER"
+            ]
+        },
+        "children": [
+            {
+                "name": "account-pool_proxy",
+                "path": "/account-pool/proxy",
+                "component": "view.account-pool_proxy",
+                "meta": {
+                    "title": "account-pool_proxy",
+                    "i18nKey": "route.account-pool_proxy",
+                    "icon": "mingcute:send-fill",
+                    "order": 1,
+                    "roles": [
+                        "R_ADMIN",
+                        "R_SUPER"
+                    ]
+                }
+            },
+            {
+                "name": "account-pool_hongshu-ck",
+                "path": "/account-pool/hongshu-ck",
+                "component": "view.account-pool_hongshu-ck",
+                "meta": {
+                    "title": "account-pool_hongshu-ck",
+                    "i18nKey": "route.account-pool_hongshu-ck",
+                    "icon": "material-symbols:person-rounded",
+                    "order": 1,
+                    "roles": [
+                        "R_ADMIN",
+                        "R_SUPER"
+                    ]
+                }
+            },
+            {
+                "name": "account-pool_hongshu-tk",
+                "path": "/account-pool/hongshu-tk",
+                "component": "view.account-pool_hongshu-tk",
+                "meta": {
+                    "title": "account-pool_hongshu-ck",
+                    "i18nKey": "route.account-pool_hongshu-tk",
+                    "icon": "material-symbols:person-rounded",
+                    "order": 1,
+                    "roles": [
+                        "R_ADMIN",
+                        "R_SUPER"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "name": "retrieval",
+        "path": "/retrieval",
+        "component": "layout.base",
+        "meta": {
+            "title": "retrieval",
+            "i18nKey": "route.retrieval",
+            "icon": "icon-park-outline:safe-retrieval",
+            "order": 6
+        },
+        "children": [
+            {
+                "name": "retrieval_home",
+                "path": "/retrieval/home",
+                "component": "view.retrieval_home",
+                "meta": {
+                    "title": "retrieval_home",
+                    "i18nKey": "首页采集",
+                    "icon": "material-symbols:add-home-outline"
+                }
+            },
+            {
+                "name": "retrieval_note",
+                "path": "/retrieval/note",
+                "component": "view.retrieval_note",
+                "meta": {
+                    "title": "retrieval_note",
+                    "i18nKey": "笔记检索",
+                    "icon": "mingcute:notebook-line"
+                }
+            },
+            {
+                "name": "retrieval_search",
+                "path": "/retrieval/search",
+                "component": "view.retrieval_search",
+                "meta": {
+                    "title": "retrieval_search",
+                    "i18nKey": "搜索笔记",
+                    "icon": "ic:outline-search"
+                }
+            },
+            {
+                "name": "retrieval_keyword",
+                "path": "/retrieval/keyword",
+                "component": "view.retrieval_keyword",
+                "meta": {
+                    "title": "retrieval_keyword",
+                    "i18nKey": "关键词联想",
+                    "icon": "ic:outline-search"
+                }
+            }
+        ]
+    },
+    {
+        "name": "task",
+        "path": "/task",
+        "component": "layout.base",
+        "meta": {
+            "title": "task",
+            "i18nKey": "任务中心",
+            "icon": "icon-park-outline:safe-retrieval",
+            "order": 6
+        },
+        "children": [
+            {
+                "name": "task_new",
+                "path": "/task/new",
+                "meta": {
+                    "title": "task_new",
+                    "i18nKey": "新建任务",
+                    "icon": "material-symbols:add-home-outline"
+                },
+                "children": [
+                    {
+                      "name":"task_new_keyword",
+                      "path": "/task/new/keyword",
+                      "component": "view.task_new_keyword",
+                      "meta": {
+                          "title": "task_new_keyword",
+                          "i18nKey": "关键词搜索"
+                      }
+                    },
+                    {
+                      "name":"task_new_note",
+                      "path": "/task/new/note",
+                      "component": "view.task_new_note",
+                      "meta": {
+                          "title": "task_new_note",
+                          "i18nKey": "笔记采集"
+                      }
+                    }
+                ]
+            },
+            {
+                "name": "task_manage",
+                "path": "/task/manage",
+                "component": "view.task_manage",
+                "meta": {
+                    "title": "retrieval_note",
+                    "i18nKey": "任务管理",
+                    "icon": "mingcute:notebook-line"
+                }
+            }
+        ]
+    },
+    {
+        "name": "information",
+        "path": "/information",
+        "component": "layout.base",
+        "meta": {
+            "title": "information",
+            "i18nKey": "route.information",
+            "icon": "fluent:book-information-24-regular",
+            "order": 6
+        },
+        "children": [
+            {
+                "name": "information_avatar",
+                "path": "/information/avatar",
+                "component": "view.information_avatar",
+                "meta": {
+                    "title": "information_avatar",
+                    "i18nKey": "route.information_avatar",
+                    "icon": "tdesign:user-avatar"
+                }
+            }
+        ]
+    },
+    {
+        "name": "log",
+        "path": "/log",
+        "component": "layout.base",
+        "meta": {
+            "title": "log",
+            "i18nKey": "route.log",
+            "icon": "stash:comments-duotone",
+            "order": 8
+        },
+        "children": [
+            {
+                "name": "log_xhs-comment",
+                "path": "/log/xhs-comment",
+                "component": "view.log_xhs-comment",
+                "meta": {
+                    "title": "log_xhs-comment",
+                    "icon": "iconoir:corner-bottom-right",
+                    "i18nKey": "route.log_xhs-comment"
+                }
+            }
+        ]
+    },
+    {
+        "name": "about",
+        "path": "/about",
+        "component": "layout.base$view.about",
+        "meta": {
+            "title": "about",
+            "i18nKey": "route.about",
+            "icon": "fluent:book-information-24-regular",
+            "order": 10
+        }
+    },
+    {
+        "name": "frame-about",
+        "path": "/frame-about",
+        "component": "layout.base$view.frame-about",
+        "meta": {
+            "title": "frame-about",
+            "i18nKey": "route.frame_about",
+            "icon": "fluent:book-information-24-regular",
+            "order": 10,
+            "roles": [
+                "R_ADMIN",
+                "R_SUPER"
+            ]
+        }
+    },
+    {
+        "name": "user-center",
+        "path": "/user-center",
+        "component": "layout.base$view.user-center",
+        "meta": {
+            "title": "user-center",
+            "i18nKey": "route.user-center",
+            "hideInMenu": true
+        }
+    },
+    {
+        "name": "iframe-page",
+        "path": "/iframe-page/:url",
+        "component": "layout.base$view.iframe-page",
+        "props": true,
+        "meta": {
+            "title": "iframe-page",
+            "i18nKey": "route.iframe-page",
+            "constant": true,
+            "hideInMenu": true,
+            "keepAlive": true
+        }
+    },
+    {
+        "name": "login",
+        "path": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?",
+        "component": "layout.blank$view.login",
+        "props": true,
+        "meta": {
+            "title": "login",
+            "i18nKey": "route.login",
+            "constant": true,
+            "hideInMenu": true
+        }
+    }
+]

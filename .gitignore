@@ -1,0 +1,20 @@
+.env
+.env*
+.idea
+/venv
+__pycache__
+# Logs
+*.log
+.DS_Store
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+yarn.lock
+.VSCodeCounter
