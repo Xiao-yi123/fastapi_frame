@@ -41,7 +41,23 @@ class RabbitManager:
 
         # 建立与RabbitMQ的连接并获取信道
         self.connection, self.channel = self.connect_to_rabbitmq()
+        # 是否初始化 exchange_and_queue
+        self._is_init_exchange_and_queue: bool = False
 
+    def _init_exchange_and_queue(self, exchange_name, queue_name):
+        # 声明交换机，类型为direct
+        self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+
+        # 声明队列，使其持久化
+        self.channel.queue_declare(queue=queue_name, durable=True)
+
+        # 将队列与交换机绑定
+        self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
+
+        # 设置每个消费者同时最多处理的消息数量
+        self.channel.basic_qos(prefetch_count=self._max_rebbitmq_prefetch_count)
+
+        self._is_init_exchange_and_queue = True
     def close(self):
         if self.channel:
             self.channel.close()
@@ -257,24 +273,17 @@ class RabbitManager:
         - 参数`exchange_name`和`queue_name`通常在创建队列或交换机时指定。
         - 这个函数假设RabbitMQ服务已经启动，并且可以通过`self.connect_to_rabbitmq()`方法进行连接。
         """
-        # self.connection, self.channel = self.connect_to_rabbitmq()
-        # 声明交换机，类型为direct
-        self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+        try:
+            if not self._is_init_exchange_and_queue:
+                self._init_exchange_and_queue(exchange_name=exchange_name, queue_name=queue_name)
+            # 开始消费队列中的消息
+            self.channel.basic_consume(queue=queue_name, on_message_callback=self.process_task)
 
-        # 声明队列，使其持久化
-        self.channel.queue_declare(queue=queue_name, durable=True)
-
-        # 将队列与交换机绑定
-        self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
-
-        # 设置每个消费者同时最多处理的消息数量
-        self.channel.basic_qos(prefetch_count=self._max_rebbitmq_prefetch_count)
-
-        # 开始消费队列中的消息
-        self.channel.basic_consume(queue=queue_name, on_message_callback=self.process_task)
-
-        # 开始监听并消费消息
-        self.channel.start_consuming()
+            # 开始监听并消费消息
+            self.channel.start_consuming()
+        except Exception as e:
+            self._is_init_exchange_and_queue = False
+            rabbitmq_logger.error(f"Error while consuming tasks: {e}")
 
     def start_monitoring(self, exchange_name, queue_name=None, not_control=[]):
         """
@@ -317,14 +326,15 @@ class RabbitManager:
         - queue_fun: str, 当队列中有任务时需要执行的函数名称。
         """
         while True:
-            # 获取所有队列信息，检查指定的队列是否存在
-            rabbit.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
-            result = rabbit.channel.queue_declare(queue=queue_info.get("queue_name"), durable=True)
 
-            if not result:
-                continue
             # 根据队列的类型执行相应的逻辑
             if queue_info.get("type") == "count":
+                result = rabbit.channel.queue_declare(queue=queue_info.get("queue_name"), durable=True)
+
+                if not result:
+                    # 获取所有队列信息，检查指定的队列是否存在
+                    rabbit.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+                    continue
                 # 检查队列长度，如果大于零，则消费任务
                 if result.method.message_count > 0:
                     rabbit.consume_tasks(exchange_name, queue_info.get("queue_name"))
@@ -338,9 +348,6 @@ class RabbitManager:
                 rabbit.run_def(task)
             else:
                 break
-
-            # 如果队列为空，等待一秒钟后再次检查
-            time.sleep(queue_info.get("time_sleep"))
 
     def monitor_queue(self, exchange_name: str, queue_info: list = None):
         """
