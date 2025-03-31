@@ -89,9 +89,8 @@ class RequestTools:
 
         # 返回结果字典
         return headers_dict
-
+    @staticmethod
     def send_http_request(
-        self,
         method: str,
         url: str,
         headers=None,
@@ -150,9 +149,8 @@ class RequestTools:
             else:
                 # 否则返回响应的二进制内容
                 return response.content
-
+    @staticmethod
     async def send_http_request_async(
-        self,
         method: str,
         url: str,
         headers=None,

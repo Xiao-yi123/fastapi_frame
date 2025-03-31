@@ -72,6 +72,23 @@ class IpWhitelistMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+class ExceptionHandlingDependencyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        """
+            依赖项用于捕获请求处理过程中发生的异常。
+            """
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            # 记录异常信息
+            error_msg = f"An error occurred while processing request: {request.method} {request.url} {str(e)}"
+
+            # 返回自定义的错误响应
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": error_msg},
+            )
+        return response
 
 
 
@@ -91,6 +108,7 @@ def make_middlewares():
     middleware = [
         # 添加IP白名单中间件
         Middleware(IpWhitelistMiddleware),
+        Middleware(ExceptionHandlingDependencyMiddleware),
         # 添加后台任务中间件
         # 添加跨域资源共享中间件，并配置允许所有来源、凭证、HTTP方法和头
         Middleware(
