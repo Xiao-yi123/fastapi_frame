@@ -89,66 +89,7 @@ class RequestTools:
 
         # 返回结果字典
         return headers_dict
-    @staticmethod
-    def send_http_request(
-        method: str,
-        url: str,
-        headers=None,
-        params=None,
-        data=None,
-        proxies: str = None,
-        timeout: int = 60,
-        return_format: str = "content",
-        is_response: bool = False,
-        **kwargs,
-    ):
-        """
-        发送同步 HTTP 请求。
 
-        Args:
-            method (str): HTTP 请求方法，如 'GET', 'POST' 等。
-            url (str): 请求的 URL。
-            headers (dict, optional): 请求头信息。默认为 None。
-            params (dict, optional): 请求的查询参数。默认为 None。
-            data (any, optional): 请求的数据。默认为 None。
-            proxies (str, optional): 代理服务器地址。默认为 None。
-            timeout (int, optional): 请求超时时间（秒）。默认为 60。
-            return_format (str, optional): 返回数据的格式，可选值为 'json', 'text', 'content'。默认为 'content'。
-            is_response (bool, optional): 是否直接返回响应对象。默认为 False。
-            **kwargs: 其他可选的请求参数。
-
-        Returns:
-            根据 return_format 和 is_response 的设置返回不同类型的数据：
-            - 如果 is_response 为 True，则返回响应对象。
-            - 如果 is_response 为 False：
-                - 当 return_format 为 'json' 时，返回解析后的 JSON 数据。
-                - 当 return_format 为 'text' 时，返回响应的文本内容。
-                - 当 return_format 为 'content' 时，返回响应的二进制内容。
-        """
-        # 发送同步 HTTP 请求
-        response = requests.request(
-            url=url,
-            method=method,
-            headers=headers,
-            params=params,
-            data=data,
-            timeout=timeout,
-            proxies={"http": proxies, "https": proxies},
-            **kwargs,
-        )
-        if is_response:
-            # 如果需要返回响应对象，则直接返回
-            return response
-        else:
-            if return_format == "json":
-                # 如果返回格式为 JSON，则解析并返回 JSON 数据
-                return response.json()
-            elif return_format == "text":
-                # 如果返回格式为文本，则返回响应的文本内容
-                return response.text
-            else:
-                # 否则返回响应的二进制内容
-                return response.content
     @staticmethod
     async def send_http_request_async(
         method: str,
