@@ -10,7 +10,6 @@ import requests
 from app.logs import rabbitmq_logger
 from config.settings import mqSettings
 
-
 # 不能删
 from app.controllers import *
 
@@ -306,6 +305,7 @@ class RabbitManager:
         from config.rabbitmq import rabbit_config as new_rabbit_config
 
         for queue in queue_name.values():
+            queue = queue.__dict__
             if queue.get("queue_name") in not_control:
                 continue
             for n in range(queue.get("max_consumer", self._max_consumer)):
@@ -365,6 +365,7 @@ class RabbitManager:
         from config.rabbitmq import rabbit_config as new_rabbit_config
         # 为每个队列信息启动一个线程来监控队列
         for i in queue_info:
+            i = i.__dict__
             for n in range(i.get("max_consumer", self._max_consumer)):
                 rabbit = RabbitManager(new_rabbit_config)
                 threading_name = f"{exchange_name}-{i['queue_name']}-{n}"
@@ -671,6 +672,8 @@ class RabbitManager:
         consumer_count = queue.method.consumer_count
         return consumer_count
 
+
+
 class RabbitConfig:
     def __init__(self,RabbitMq=None):
         """
@@ -942,7 +945,7 @@ class RabbitMQConnectionPool:
         self._release_connection(connection, lock)
 
 rabbit_config = RabbitConfig().connfig_to_dict()
-rabbit_pool = RabbitMQConnectionPool(rabbit_config,pool_size=rabbit_config.get("rabbitmq_pool_max_overflow",10))
+rabbit_pool = RabbitMQConnectionPool(rabbit_config,pool_size=rabbit_config.get("rabbitmq_pool_max_overflow",0))
 
 
 __all__ = [
@@ -952,5 +955,7 @@ __all__ = [
     "rabbit_config",
     "RabbitMQConnectionPool",
 ]
+
+
 
 
