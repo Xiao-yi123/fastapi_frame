@@ -85,29 +85,17 @@ class MQConfigSettings(BaseSettings):
 
     # noinspection PyDataclass
     RabbitMq: dict = {
-        # "队列的 key": {
-        #     "type": [],队列监控的类型  "start_monitoring","monitor_queue"
-        #     "exchange_name": "",交换机名,
-        #     "queue_start_monitoring": {
-        #                 "title":"标题"
-        #             "queue_name": "队列名",
-        #             "queue_fun": "该队列对应的函数",
-        #             "max_consumer":"同时启动多少个消费者"
-        #         },
-        #      "not_control": ["队列名1","队列名2"]  不监控的列表
-        #     "queue_monitor_queue": [
-        #                 {
-        #                     "type":"类型" # count 根据数量监控, time 根据等待时间监控
-        #                     "title":"标题"
-        #                     "queue_name": "当前队列名",
-        #                     "queue_fun": "队列函数",
-        #                     "forward_queue_name": "转发的队列名",
-        #                     "max_consumer": "同时启动多少个消费者",
-        #                     "time_sleep" :"死循环的等待时间"
-        #                 }
-        #
-        #             ]
-        # },
+        # "key": QueueConfig(
+        #     type=["start_monitoring"],
+        #     exchange_name="baiwan.collection",
+        #     not_control=[],
+        #     queue_start_monitoring={
+        #         "collection_comment": QueueStartMonitoring(),
+        #     },
+        #     queue_monitor_queue=[
+        #         QueueMonitorQueue()
+        #     ]
+        # )
     }
     class Config:
         env_prefix = "RABBITMQ_"
