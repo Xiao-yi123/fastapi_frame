@@ -10,6 +10,7 @@ import requests
 from app.logs import rabbitmq_logger
 from config.settings import mqSettings
 
+
 # 不能删
 from app.controllers import *
 
@@ -670,53 +671,131 @@ class RabbitManager:
         consumer_count = queue.method.consumer_count
         return consumer_count
 
-
-
 class RabbitConfig:
-    def __init__(self, **keyword):
+    def __init__(self,RabbitMq=None):
         """
         初始化 RabbitMQ 配置
 
         :param db_settings: 包含 RabbitMQ 配置的设置对象
         """
-        self.host = keyword.get("host", mqSettings.host)
-        self.port = keyword.get("port", mqSettings.port)
-        self.user = keyword.get("user", mqSettings.user)
-        self.password = keyword.get("password", mqSettings.password)
-        self.api_port = keyword.get("api_port", mqSettings.api_port)
-        self.virtual_host = keyword.get("virtual_host", mqSettings.virtual_host)
-        self.connection_attempts = keyword.get("connection_attempts", mqSettings.connection_attempts)
-        self.retry_delay = keyword.get("retry_delay", mqSettings.retry_delay)
-        self.socket_timeout = keyword.get("socket_timeout", mqSettings.socket_timeout)
-        self.max_rebbitmq_prefetch_count = keyword.get("max_rebbitmq_prefetch_count",
-                                                       mqSettings.prefetch_count)
-        self.max_consumer = keyword.get("max_consumer", mqSettings.max_consumer)
-        self.heartbeat = keyword.get("heartbeat", mqSettings.heartbeat)
-        self.blocked_connection_timeout = keyword.get("blocked_connection_timeout", mqSettings.blocked_connection_timeout)
-        self.rabbitmq_pool_max_overflow = keyword.get("rabbitmq_pool_max_overflow", mqSettings.pool_max_overflow)
+        self.RabbitMq = RabbitMq if RabbitMq else mqSettings.RabbitMq
+        self.RabbitMqKey = None
 
-    def to_dict(self):
+    def connfig_to_dict(self, **keyword):
         """
         将配置转换为字典
 
         :return: 包含所有配置的字典
         """
         return {
-            "host": self.host,
-            "port": self.port,
-            "user": self.user,
-            "password": self.password,
-            "api_port": self.api_port,
-            "virtual_host":self.virtual_host,
-            "connection_attempts": self.connection_attempts,
-            "retry_delay": self.retry_delay,
-            "socket_timeout": self.socket_timeout,
-            "max_rebbitmq_prefetch_count": self.max_rebbitmq_prefetch_count,
-            "max_consumer": self.max_consumer,
-            "heartbeat": self.heartbeat,
-            "rabbitmq_pool_max_overflow": self.rabbitmq_pool_max_overflow,
-            "blocked_connection_timeout":self.blocked_connection_timeout
+            "host": keyword.get("host", mqSettings.host),
+            "port": keyword.get("port", mqSettings.port),
+            "user": keyword.get("user", mqSettings.user),
+            "password": keyword.get("password", mqSettings.password),
+            "api_port": keyword.get("api_port", mqSettings.api_port),
+            "virtual_host":keyword.get("virtual_host", mqSettings.virtual_host),
+            "connection_attempts": keyword.get("connection_attempts", mqSettings.connection_attempts),
+            "retry_delay": keyword.get("retry_delay", mqSettings.retry_delay),
+            "socket_timeout": keyword.get("socket_timeout", mqSettings.socket_timeout),
+            "max_rebbitmq_prefetch_count": keyword.get("max_rebbitmq_prefetch_count",
+                                                       mqSettings.prefetch_count),
+            "max_consumer": keyword.get("max_consumer", mqSettings.max_consumer),
+            "heartbeat": keyword.get("heartbeat", mqSettings.heartbeat),
+            "rabbitmq_pool_max_overflow": keyword.get("blocked_connection_timeout", mqSettings.blocked_connection_timeout),
+            "blocked_connection_timeout":keyword.get("rabbitmq_pool_max_overflow", mqSettings.pool_max_overflow)
         }
+
+    def get_RabbitMqKey(self, keyword: str = None):
+        """
+        根据提供的关键字获取RabbitMQ的键值。
+
+        此方法从RabbitMQ实例中获取与给定关键字相关联的值，并将其赋给实例变量RabbitMqKey。
+        如果没有提供关键字，或者关键字在RabbitMQ实例中不存在，那么self.RabbitMqKey将被设置为None。
+
+        参数:
+        - keyword (str): 用于在RabbitMQ中查找的键的关键字。如果未提供，则默认为None。
+
+        返回:
+        此方法没有显式返回值。但是，它通过修改实例变量self.RabbitMqKey来存储检索到的值。
+        """
+        self.RabbitMqKey = self.RabbitMq.get(keyword)
+
+    def get_RabbitMqType(self):
+        """
+        获取RabbitMQ的类型
+
+        该方法用于返回当前实例的RabbitMQ类型，通过访问RabbitMqKey属性的type成员实现
+        """
+        return self.RabbitMqKey.type
+    def get_RabbitMqExchangeName(self):
+        """
+        获取RabbitMQ的Exchange名称。
+
+        该方法从实例的RabbitMqKey属性中获取并返回Exchange名称。
+        主要目的是提供一个简单的方法来访问RabbitMQ配置中的Exchange名称属性。
+
+        返回:
+        str: RabbitMQ的Exchange名称。
+        """
+        return self.RabbitMqKey.exchange_name
+
+    def get_RabbitMqNotConntrol(self):
+        """
+        获取RabbitMQ非控制键值
+
+        该方法返回一个表示非控制的RabbitMQ键值。这主要用于在系统中标识或处理那些不用于控制目的的RabbitMQ连接或消息。
+
+        Returns:
+            not_control: 一个表示非控制的RabbitMQ键值。
+        """
+        return self.RabbitMqKey.not_control
+
+    def get_RabbitMqStart(self, keyword=None):
+        """
+        根据关键字获取RabbitMQ队列开始监控的键值。
+
+        如果提供了keyword参数，则返回与该keyword相关联的队列开始监控的键值；
+        如果没有提供keyword参数，则返回整个queue_start_monitoring对象。
+
+        参数:
+        keyword (str, optional): 队列的关键字。默认为None。
+
+        返回:
+        str 或对象: 如果提供了keyword，则返回对应的键值；否则返回整个监控对象。
+        """
+        if keyword:
+            return self.RabbitMqKey.queue_start_monitoring.get(keyword)
+        else:
+            return self.RabbitMqKey.queue_start_monitoring
+    def get_RabbitMqMonitor(self, queue_name=None):
+        """
+        获取RabbitMQ监控信息。
+
+        此函数根据提供的队列名称，从RabbitMQ监控队列中查找并返回相应的队列监控信息。
+        如果没有提供队列名称，则返回所有队列的监控信息。
+
+        参数:
+        - queue_name (str, optional): 需要监控的队列名称。默认为None。
+
+        返回:
+        - 如果提供了queue_name并且找到了匹配的队列，则返回该队列的监控信息。
+        - 如果提供了queue_name但没有找到匹配的队列，则返回None。
+        - 如果queue_name为None，则返回所有队列的监控信息列表。
+        """
+        # 获取RabbitMQ监控队列
+        queue_monitor_queue = self.RabbitMqKey.queue_monitor_queue
+
+        # 如果提供了具体的队列名称
+        if queue_name:
+            # 遍历监控队列，寻找匹配的队列名称
+            for queue in queue_monitor_queue:
+                if queue.get("queue_name") == queue_name:
+                    # 如果找到了匹配的队列，返回其监控信息
+                    return queue
+            # 如果遍历结束后没有找到匹配的队列，返回None
+            return None
+        # 如果没有提供队列名称，返回所有队列的监控信息
+        return queue_monitor_queue
 
 class RabbitMQConnectionPool:
     """
@@ -858,7 +937,7 @@ class RabbitMQConnectionPool:
         """
         self._release_connection(connection, lock)
 
-rabbit_config = RabbitConfig().to_dict()
+rabbit_config = RabbitConfig().connfig_to_dict()
 rabbit_pool = RabbitMQConnectionPool(rabbit_config,pool_size=rabbit_config.get("rabbitmq_pool_max_overflow",10))
 
 
@@ -869,7 +948,5 @@ __all__ = [
     "rabbit_config",
     "RabbitMQConnectionPool",
 ]
-
-
 
 

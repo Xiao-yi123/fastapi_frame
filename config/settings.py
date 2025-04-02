@@ -16,6 +16,8 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from dotenv import load_dotenv
 
+from app.types.request import RabbitMqConfig, RabbitMqStartMonitoring, RabbitMqMonitorRabbitMq
+
 
 class AppConfigSettings(BaseSettings):
     """应用配置"""
@@ -85,17 +87,19 @@ class MQConfigSettings(BaseSettings):
 
     # noinspection PyDataclass
     RabbitMq: dict = {
-        # "key": QueueConfig(
-        #     type=["start_monitoring"],
-        #     exchange_name="baiwan.collection",
-        #     not_control=[],
-        #     queue_start_monitoring={
-        #         "collection_comment": QueueStartMonitoring(),
-        #     },
-        #     queue_monitor_queue=[
-        #         QueueMonitorQueue()
-        #     ]
-        # )
+        # {
+        #     "key": RabbitMqConfig(
+        #         type=["start_monitoring"],
+        #         exchange_name="baiwan.collection",
+        #         not_control=[],
+        #         queue_start_monitoring={
+        #             "collection_comment": RabbitMqStartMonitoring(),
+        #         },
+        #         queue_monitor_queue=[
+        #             RabbitMqMonitorRabbitMq()
+        #         ]
+        #     )
+        # }
     }
     class Config:
         env_prefix = "RABBITMQ_"
