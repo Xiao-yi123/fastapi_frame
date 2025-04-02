@@ -764,7 +764,11 @@ class RabbitConfig:
         str 或对象: 如果提供了keyword，则返回对应的键值；否则返回整个监控对象。
         """
         if keyword:
-            return self.RabbitMqKey.queue_start_monitoring.get(keyword)
+            data_obj = self.RabbitMqKey.queue_start_monitoring.get(keyword)
+            if data_obj:
+                return data_obj.__dict__
+            else:
+                return None
         else:
             return self.RabbitMqKey.queue_start_monitoring
     def get_RabbitMqMonitor(self, queue_name=None):

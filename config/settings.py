@@ -117,18 +117,6 @@ class JWTConfigSettings(BaseSettings):
     class Config:
         env_prefix = "JWT_"
 
-class LogConfigSettings(BaseSettings):
-    """日志配置"""
-    enable: bool = False
-    level: str = "DEBUG"
-    log_path: str = os.path.normpath(os.getcwd() + "/logs")
-    log_name: str = "app.logs"
-    log_max_bytes: int = 1024 * 1024 * 10
-    log_backup_count: int = 10
-    sql_log_path: str = os.path.normpath(os.getcwd() + "/app/logs/sqlalchemy_logging.log")
-
-    class Config:
-        env_prefix = "LOG_"
 
 @lru_cache
 def getAppConfig() -> AppConfigSettings:
@@ -160,24 +148,15 @@ def getJWTConfig() -> JWTConfigSettings:
     return JWTConfigSettings()
 
 
-@lru_cache
-def getLogConfig() -> LogConfigSettings:
-    # 加载 .env 文件，dotenv_path 变量默认是.env
-    load_dotenv()
-    # 实例化配置模型
-    return LogConfigSettings()
-
 
 appSettings = getAppConfig()
 dbSettings = getDbConfig()
 mqSettings = getMQConfig()
 jwtConfig = JWTConfigSettings()
-logSettings = getLogConfig()
 
 __all__ = [
     'appSettings',
     'dbSettings',
     "mqSettings",
     'jwtConfig',
-    "logSettings",
 ]
