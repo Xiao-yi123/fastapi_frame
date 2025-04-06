@@ -52,6 +52,10 @@ class BaseCRUD:
                             filters.append(getattr(model, key) != val)
                         else:
                             filters.append(getattr(model, key) == value)
+                            # 如果等于列表证明是区间查询
+                    elif isinstance(value, list):
+                        filters.append(getattr(model, key).between(value[0], value[1]))
+
                     else:
                         filters.append(getattr(model, key) == value)
                 else:
