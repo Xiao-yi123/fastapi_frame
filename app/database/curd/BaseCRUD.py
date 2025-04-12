@@ -150,14 +150,14 @@ class BaseCRUD:
                 ResponseFail(msg=f"SQL GET ERROR:{str(e)}")
             return result
 
-    async def get_count(self, **kwargs):
+    async def get_count(self,is_like_query:bool = False, **kwargs):
         """
         根据关键字参数获取符合条件的记录总数。
 
         :param kwargs: 查询条件的键值对。
         :return: 符合条件的记录总数。
         """
-        filters = self.get_filters(self._model, is_like=True, **kwargs)
+        filters = self.get_filters(self._model, is_like=is_like_query, **kwargs)
 
         async with getDatabaseSessionAsync(connect_str=self.connect_str) as session:
             count_query = await session.execute(
@@ -165,20 +165,20 @@ class BaseCRUD:
             )
             return count_query.scalar()
 
-    def get_count_sync(self, **kwargs):
+    def get_count_sync(self,is_like_query:bool = False, **kwargs):
         """
         根据关键字参数获取符合条件的记录总数。
 
         :param kwargs: 查询条件的键值对。
         :return: 符合条件的记录总数。
         """
-        filters = self.get_filters(self._model, is_like=True, **kwargs)
+        filters = self.get_filters(self._model, is_like=is_like_query, **kwargs)
 
         with getDatabaseSession(connect_str=self.connect_str) as session:
             count_query = session.query(func.count()).select_from(self._model).where(and_(*filters))
             return count_query.scalar()
 
-    async def get_list_page(self, current: int = 1, size: int = 10, **kwargs):
+    async def get_list_page(self,is_like_query:bool = False, current: int = 1, size: int = 10, **kwargs):
         """
         根据关键字参数获取分页后的记录列表。
 
@@ -187,7 +187,7 @@ class BaseCRUD:
         :param kwargs: 查询条件的键值对。
         :return: 分页后的记录列表。
         """
-        filters = self.get_filters(self._model, is_like=True, **kwargs)
+        filters = self.get_filters(self._model, is_like=is_like_query, **kwargs)
 
         async with getDatabaseSessionAsync(connect_str=self.connect_str) as session:
             query = await session.execute(
@@ -195,8 +195,8 @@ class BaseCRUD:
             )
             return query.scalars().all()
 
-    def get_list_page_sync(self, current: int = 1, size: int = 10, **kwargs):
-        filters = self.get_filters(self._model, is_like=True, **kwargs)
+    def get_list_page_sync(self,is_like_query:bool = False, current: int = 1, size: int = 10, **kwargs):
+        filters = self.get_filters(self._model, is_like=is_like_query, **kwargs)
 
         with getDatabaseSession(connect_str=self.connect_str) as session:
             result = session.query(self._model).filter(and_(*filters)).offset((current - 1) * size).limit(size).all()
