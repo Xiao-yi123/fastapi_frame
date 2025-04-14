@@ -44,23 +44,32 @@ class BaseCRUD:
                 elif value is not None:
                     if isinstance(value, tuple) and len(value) == 2:
                         operator, val = value
-                        if operator == '>':
-                            filters.append(getattr(model, key) > val)
-                        elif operator == '<':
-                            filters.append(getattr(model, key) < val)
-                        elif operator == '!=':
-                            filters.append(getattr(model, key) != val)
-                        else:
-                            filters.append(getattr(model, key) == value)
-                            # 如果等于列表证明是区间查询
-                    elif isinstance(value, list):
-                        filters.append(getattr(model, key).between(value[0], value[1]))
+                        operator = operator.lower()
+                        match operator:
+                            case '>':
+                                filters.append(getattr(model, key) > val)
+                            case '<':
+                                filters.append(getattr(model, key) < val)
+                            case '!=':
+                                filters.append(getattr(model, key) != val)
+                            case ">=":
+                                filters.append(getattr(model, key) >= val)
+                            case "<=":
+                                filters.append(getattr(model, key) <= val)
+                            case "in":
+                                filters.append(getattr(model, key).in_(val))
+                            case "not in":
+                                filters.append(getattr(model, key).notin_(val))
+                            # 区间查询
+                            case "between":
+                                filters.append(getattr(model, key).between(value[0], value[1]))
 
+                            case _:
+                                filters.append(getattr(model, key) == value)
                     else:
                         filters.append(getattr(model, key) == value)
                 else:
                     filters.append(getattr(model, key).is_(None))
-
         return filters
 
 
