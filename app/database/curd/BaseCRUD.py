@@ -1,13 +1,14 @@
-from datetime import datetime
-from typing import List
 from sqlalchemy import and_, func, create_engine
 from sqlalchemy.future import select
-from pydantic import BaseModel
-
-import asyncio
+from sqlalchemy.orm import subqueryload
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.ddl import CreateTable
 
+import asyncio
+from pydantic import BaseModel
+from datetime import datetime
+from typing import List
+from app.database import MODEl_JOIN_QUERY
 from app.types.response import ResponseFail
 from config.database import getDatabaseSessionAsync, getDatabaseSession
 
@@ -211,6 +212,63 @@ class BaseCRUD:
             result = session.query(self._model).filter(and_(*filters)).offset((current - 1) * size).limit(size).all()
         return result
 
+    def join_query(self, current: int = 1, size: int = 10, prams: dict = {}, other_params: dict = {}):
+        """
+        执行数据库查询，支持主查询和多个关联查询。
+
+        参数:
+        - current: 当前页码，默认为1。
+        - size: 每页大小，默认为10。
+        - prams: 主查询的参数字典，默认为空字典。
+        - other_params: 其他关联查询的参数字典，默认为空字典。
+            other_params demo:
+                {
+                    "UsersModel":{
+                        "params":{
+                            "id":1
+                        },
+                        "is_outerjoin":True,
+                        "is_join":False,
+                        "is_subqueryload":True
+                    }
+                }
+        返回:
+        - 一个字典，包含查询数据和总记录数。
+        """
+        # 创建数据库会话
+        with getDatabaseSession(connect_str=self.connect_str) as session:
+            all_prams = []
+            query_obj = session.query(self._model)
+
+            # 处理主查询的过滤条件
+            if prams:
+                all_prams.extend(self.get_filters(self._model, **prams))
+
+            # 处理关联查询
+            for key, other in other_params.items():
+                if key in MODEl_JOIN_QUERY:
+                    all_prams.extend(self.get_filters(MODEl_JOIN_QUERY[key]['model'], **other.get('params')))
+                    # 根据关联查询的配置，决定使用外连接、内连接还是子查询加载
+                    if other.get("is_outerjoin"):
+                        query_obj = query_obj.outerjoin(MODEl_JOIN_QUERY[key]['model'])
+                    if other.get("is_join"):
+                        query_obj = query_obj.join(MODEl_JOIN_QUERY[key]['model'])
+                    if other.get("is_subqueryload"):
+                        query_obj = query_obj.options(
+                            subqueryload(getattr(self._model, MODEl_JOIN_QUERY[key]['relationship_name'])))
+                    if other.get("params"):
+                        all_prams.extend(self.get_filters(MODEl_JOIN_QUERY[key]['model'], **other.get("params")))
+            # 执行查询并分页
+            query = query_obj.filter(and_(*all_prams))
+            data = query.offset((current - 1) * size).limit(size).all()
+            num = query.count()
+
+            # 返回查询结果和总记录数
+            return {
+                "data": data,
+                "total": num,
+            }
+
     async def create(self, create):
         """
         创建一条新的记录。
@@ -356,12 +414,11 @@ class BaseCRUD:
         # 返回删除成功的记录数量
         return len(results)
 
-    def batch_delete_sync(self, user_id: int, ids: list):
+    def batch_delete_sync(self, ids: list):
         with getDatabaseSession(connect_str=self.connect_str) as session:
             query = session.query(self._model)
             result = query.filter(
                 self._model.id.in_(ids),
-                self._model.user_id == user_id
             ).delete(synchronize_session=False)
             session.commit()
         return result
@@ -450,6 +507,5 @@ class BaseCRUD:
         # 生成 SQL 语句
         sql_statements = "\n".join(str(CreateTable(table).compile(engine)) for table in metadata.sorted_tables)
         return sql_statements
-
 
 __all__ = ['BaseCRUD']

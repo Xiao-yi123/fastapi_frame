@@ -13,7 +13,21 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
 
+MODEl_JOIN_QUERY = {} # 模型关联关系 使用join查询时会用到
+# 示例
+# {
+#     "UsersModel":{
+#         "model":UsersModel,
+#         "relationship_name":"users_model",
+#     },
+#     "TkModel":{
+#         "model":TkModel,
+#         "relationship_name": "tk_model",
+#     }
+#
+# }
 
 __all__ = [
-    "Base"
+    "Base",
+    "MODEl_JOIN_QUERY"
 ]
