@@ -5,13 +5,20 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.ddl import CreateTable
 
 import asyncio
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from datetime import datetime
-from typing import List
-from app.database import MODEl_JOIN_QUERY
+from typing import List,Optional
 from app.types.response import ResponseFail
 from config.database import getDatabaseSessionAsync, getDatabaseSession
 
+
+class CRUDJoinParams(BaseModel):
+    model:Optional[str] = Field(None, description='用户关联模型')
+    relationship_name:Optional[str] = Field(None, description='关联模型名称')
+    params:Optional[dict] = Field(None, description='其他查询参数')
+    is_outerjoin: Optional[bool] = Field(False, description='是否使用外连接')
+    is_join: Optional[bool] = Field(False, description='是否使用内连接')
+    is_subqueryload: Optional[bool] = Field(False, description='是否使用子查询加载')
 
 class BaseCRUD:
     """
@@ -63,8 +70,7 @@ class BaseCRUD:
                                 filters.append(getattr(model, key).notin_(val))
                             # 区间查询
                             case "between":
-                                filters.append(getattr(model, key).between(value[0], value[1]))
-
+                                filters.append(getattr(model, key).between(value[1][0], value[1][1]))
                             case _:
                                 filters.append(getattr(model, key) == value)
                     else:
@@ -212,28 +218,18 @@ class BaseCRUD:
             result = session.query(self._model).filter(and_(*filters)).offset((current - 1) * size).limit(size).all()
         return result
 
-    def join_query(self, current: int = 1, size: int = 10, prams: dict = {}, other_params: dict = {}):
+    def join_query(self, current: int = 1, size: int = 10, prams: dict = {}, other_params: list[CRUDJoinParams] = []):
         """
-        执行数据库查询，支持主查询和多个关联查询。
+        执行一个关联查询
 
         参数:
-        - current: 当前页码，默认为1。
-        - size: 每页大小，默认为10。
-        - prams: 主查询的参数字典，默认为空字典。
-        - other_params: 其他关联查询的参数字典，默认为空字典。
-            other_params demo:
-                {
-                    "UsersModel":{
-                        "params":{
-                            "id":1
-                        },
-                        "is_outerjoin":True,
-                        "is_join":False,
-                        "is_subqueryload":True
-                    }
-                }
+        - current: 当前页码，默认为1
+        - size: 每页记录数，默认为10
+        - prams: 主查询的过滤条件字典
+        - other_params: 关联查询的参数列表
+
         返回:
-        - 一个字典，包含查询数据和总记录数。
+        - 一个包含查询结果和总记录数的字典
         """
         # 创建数据库会话
         with getDatabaseSession(connect_str=self.connect_str) as session:
@@ -243,21 +239,24 @@ class BaseCRUD:
             # 处理主查询的过滤条件
             if prams:
                 all_prams.extend(self.get_filters(self._model, **prams))
-
             # 处理关联查询
-            for key, other in other_params.items():
-                if key in MODEl_JOIN_QUERY:
-                    all_prams.extend(self.get_filters(MODEl_JOIN_QUERY[key]['model'], **other.get('params')))
-                    # 根据关联查询的配置，决定使用外连接、内连接还是子查询加载
-                    if other.get("is_outerjoin"):
-                        query_obj = query_obj.outerjoin(MODEl_JOIN_QUERY[key]['model'])
-                    if other.get("is_join"):
-                        query_obj = query_obj.join(MODEl_JOIN_QUERY[key]['model'])
-                    if other.get("is_subqueryload"):
-                        query_obj = query_obj.options(
-                            subqueryload(getattr(self._model, MODEl_JOIN_QUERY[key]['relationship_name'])))
-                    if other.get("params"):
-                        all_prams.extend(self.get_filters(MODEl_JOIN_QUERY[key]['model'], **other.get("params")))
+            for join_params in other_params:
+                if not join_params.model in globals():
+                    # 动态导入包
+                    module = importlib.import_module(f"app.database")
+                    # 获取类
+                    cls = getattr(module, join_params.model)
+                    # 将类添加到全局命名空间
+                    globals()[join_params.model] = cls
+                if isinstance(join_params, CRUDJoinParams):
+                    if join_params.is_outerjoin:
+                        query_obj = query_obj.outerjoin(globals().get(join_params.model))
+                    if join_params.is_join:
+                        query_obj = query_obj.join(globals().get(join_params.model))
+                    if join_params.is_subqueryload:
+                        query_obj = query_obj.options(subqueryload(getattr(self._model, join_params.relationship_name)))
+                    if join_params.params:
+                        all_prams.extend(self.get_filters(globals().get(join_params.model), **join_params.params))
             # 执行查询并分页
             query = query_obj.filter(and_(*all_prams))
             data = query.offset((current - 1) * size).limit(size).all()
@@ -268,7 +267,6 @@ class BaseCRUD:
                 "data": data,
                 "total": num,
             }
-
     async def create(self, create):
         """
         创建一条新的记录。
