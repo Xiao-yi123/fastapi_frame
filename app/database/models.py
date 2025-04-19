@@ -16,7 +16,7 @@ Base = declarative_base()
 TABLE_RELATIONSHIP = {
 
 }
- # 模型关联关系 使用join查询时会用到
+# 模型关联关系 使用join查询时会用到
 # 示例
 # TABLE_RELATIONSHIP = {
 #     "数据表名": {
