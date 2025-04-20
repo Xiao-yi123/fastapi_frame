@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from dotenv import load_dotenv
 
-from app.types.request import RabbitMqConfig, RabbitMqStartMonitoring, RabbitMqMonitorRabbitMq
+from app.types import RabbitMqConfig, RabbitMqStartMonitoring, RabbitMqMonitorRabbitMq
 
 
 class AppConfigSettings(BaseSettings):
