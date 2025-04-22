@@ -19,6 +19,8 @@ class CRUDJoinParams(BaseModel):
     is_outerjoin: Optional[bool] = Field(False, description='是否使用外连接')
     is_join: Optional[bool] = Field(False, description='是否使用内连接')
     is_subqueryload: Optional[bool] = Field(False, description='是否使用子查询加载')
+    is_joinedload: Optional[bool] = Field(False, description='是否使用 joinedload 加载')
+
 
 class BaseCRUD:
     """
@@ -257,8 +259,13 @@ class BaseCRUD:
                         query_obj = query_obj.options(subqueryload(getattr(self._model, join_params.relationship_name)))
                     if join_params.params:
                         all_prams.extend(self.get_filters(globals().get(join_params.model), **join_params.params))
+                    if join_params.is_joinedload:
+                        query_obj = query_obj.options(joinedload(getattr(self._model, join_params.relationship_name)))
+
             # 执行查询并分页
             query = query_obj.filter(and_(*all_prams))
+            print(str(query.offset((current - 1) * size).limit(size)))
+
             data = query.offset((current - 1) * size).limit(size).all()
             num = query.count()
 
