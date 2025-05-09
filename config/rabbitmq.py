@@ -13,6 +13,135 @@ from config.settings import mqSettings
 # 不能删
 from app.controllers import *
 
+class RabbitConfig:
+    def __init__(self,RabbitMq=None):
+        """
+        初始化 RabbitMQ 配置
+
+        :param db_settings: 包含 RabbitMQ 配置的设置对象
+        """
+        self.RabbitMq = RabbitMq if RabbitMq else mqSettings.RabbitMq
+        self.RabbitMqKey = None
+
+    def connfig_to_dict(self, **keyword):
+        """
+        将配置转换为字典
+
+        :return: 包含所有配置的字典
+        """
+        return {
+            "host": keyword.get("host", mqSettings.host),
+            "port": keyword.get("port", mqSettings.port),
+            "user": keyword.get("user", mqSettings.user),
+            "password": keyword.get("password", mqSettings.password),
+            "api_port": keyword.get("api_port", mqSettings.api_port),
+            "virtual_host":keyword.get("virtual_host", mqSettings.virtual_host),
+            "connection_attempts": keyword.get("connection_attempts", mqSettings.connection_attempts),
+            "retry_delay": keyword.get("retry_delay", mqSettings.retry_delay),
+            "socket_timeout": keyword.get("socket_timeout", mqSettings.socket_timeout),
+            "max_rebbitmq_prefetch_count": keyword.get("max_rebbitmq_prefetch_count",
+                                                       mqSettings.prefetch_count),
+            "max_consumer": keyword.get("max_consumer", mqSettings.max_consumer),
+            "heartbeat": keyword.get("heartbeat", mqSettings.heartbeat),
+            "rabbitmq_pool_max_overflow": keyword.get("blocked_connection_timeout", mqSettings.blocked_connection_timeout),
+            "blocked_connection_timeout":keyword.get("rabbitmq_pool_max_overflow", mqSettings.pool_max_overflow)
+        }
+
+    def get_RabbitMqKey(self, keyword: str = None):
+        """
+        根据提供的关键字获取RabbitMQ的键值。
+
+        此方法从RabbitMQ实例中获取与给定关键字相关联的值，并将其赋给实例变量RabbitMqKey。
+        如果没有提供关键字，或者关键字在RabbitMQ实例中不存在，那么self.RabbitMqKey将被设置为None。
+
+        参数:
+        - keyword (str): 用于在RabbitMQ中查找的键的关键字。如果未提供，则默认为None。
+
+        返回:
+        此方法没有显式返回值。但是，它通过修改实例变量self.RabbitMqKey来存储检索到的值。
+        """
+        self.RabbitMqKey = self.RabbitMq.get(keyword)
+
+    def get_RabbitMqType(self):
+        """
+        获取RabbitMQ的类型
+
+        该方法用于返回当前实例的RabbitMQ类型，通过访问RabbitMqKey属性的type成员实现
+        """
+        return self.RabbitMqKey.type
+    def get_RabbitMqExchangeName(self):
+        """
+        获取RabbitMQ的Exchange名称。
+
+        该方法从实例的RabbitMqKey属性中获取并返回Exchange名称。
+        主要目的是提供一个简单的方法来访问RabbitMQ配置中的Exchange名称属性。
+
+        返回:
+        str: RabbitMQ的Exchange名称。
+        """
+        return self.RabbitMqKey.exchange_name
+
+    def get_RabbitMqNotConntrol(self):
+        """
+        获取RabbitMQ非控制键值
+
+        该方法返回一个表示非控制的RabbitMQ键值。这主要用于在系统中标识或处理那些不用于控制目的的RabbitMQ连接或消息。
+
+        Returns:
+            not_control: 一个表示非控制的RabbitMQ键值。
+        """
+        return self.RabbitMqKey.not_control
+
+    def get_RabbitMqStart(self, keyword=None):
+        """
+        根据关键字获取RabbitMQ队列开始监控的键值。
+
+        如果提供了keyword参数，则返回与该keyword相关联的队列开始监控的键值；
+        如果没有提供keyword参数，则返回整个queue_start_monitoring对象。
+
+        参数:
+        keyword (str, optional): 队列的关键字。默认为None。
+
+        返回:
+        str 或对象: 如果提供了keyword，则返回对应的键值；否则返回整个监控对象。
+        """
+        if keyword:
+            data_obj = self.RabbitMqKey.queue_start_monitoring.get(keyword)
+            if data_obj:
+                return data_obj.__dict__
+            else:
+                return None
+        else:
+            return self.RabbitMqKey.queue_start_monitoring
+    def get_RabbitMqMonitor(self, queue_name=None):
+        """
+        获取RabbitMQ监控信息。
+
+        此函数根据提供的队列名称，从RabbitMQ监控队列中查找并返回相应的队列监控信息。
+        如果没有提供队列名称，则返回所有队列的监控信息。
+
+        参数:
+        - queue_name (str, optional): 需要监控的队列名称。默认为None。
+
+        返回:
+        - 如果提供了queue_name并且找到了匹配的队列，则返回该队列的监控信息。
+        - 如果提供了queue_name但没有找到匹配的队列，则返回None。
+        - 如果queue_name为None，则返回所有队列的监控信息列表。
+        """
+        # 获取RabbitMQ监控队列
+        queue_monitor_queue = self.RabbitMqKey.queue_monitor_queue
+
+        # 如果提供了具体的队列名称
+        if queue_name:
+            # 遍历监控队列，寻找匹配的队列名称
+            for queue in queue_monitor_queue:
+                if queue.get("queue_name") == queue_name:
+                    # 如果找到了匹配的队列，返回其监控信息
+                    return queue
+            # 如果遍历结束后没有找到匹配的队列，返回None
+            return None
+        # 如果没有提供队列名称，返回所有队列的监控信息
+        return queue_monitor_queue
 
 class RabbitManager:
     def __init__(self, rabbit_config):
@@ -21,11 +150,8 @@ class RabbitManager:
         self._rabbitmq_port = rabbit_config.get('port', 5672)
         self._rabbitmq_user = rabbit_config.get('user', None)
         self._rabbitmq_password = rabbit_config.get('password', None)
-        self._rabbitmq_api_port = rabbit_config.get('api_port', 15672)
         self._virtual_host = rabbit_config.get('virtual_host', "/")  # 指定虚拟主机
         self._max_rebbitmq_prefetch_count = rabbit_config.get('max_rebbitmq_prefetch_count', 3)
-        # 构造RabbitMQ API的URL
-        self._rabbitmq_api_url = f"http://{self._rabbitmq_host}:{self._rabbitmq_api_port}/api/"
         # 使用RabbitMQ的认证信息
         self._auth = (self._rabbitmq_user, self._rabbitmq_password)
         # RabbitMQ 同时启动多少个消费者
@@ -301,9 +427,7 @@ class RabbitManager:
         返回:
             无
         """
-
-        from config.rabbitmq import rabbit_config as new_rabbit_config
-
+        new_rabbit_config = RabbitConfig().connfig_to_dict()
         for queue in queue_name.values():
             queue = queue.__dict__
             if queue.get("queue_name") in not_control:
@@ -362,7 +486,7 @@ class RabbitManager:
 
         此函数内部定义了一个名为 monitor 的辅助函数，用于具体监控和处理单个队列。
         """
-        from config.rabbitmq import rabbit_config as new_rabbit_config
+        new_rabbit_config = RabbitConfig().connfig_to_dict()
         # 为每个队列信息启动一个线程来监控队列
         for i in queue_info:
             i = i.__dict__
@@ -428,157 +552,6 @@ class RabbitManager:
             # 删除队列
             self.channel.queue_delete(queue=queue_name)
 
-    def get_exchange_bindings(self, exchange_name=None):
-        """
-        获取所有绑定列表或者指定的绑定列表
-
-        参数:
-        exchange_name (str): 交换机名称。如果不指定，则返回所有交换机下的队列；否则返回指定交换机下的队列。
-
-        返回:
-        list: 绑定到指定交换机的队列列表。如果未找到任何队列或请求失败，则返回空列表。
-        """
-        # 构造RabbitMQ API的URL
-        rabbitmq_api_url = f"{self._rabbitmq_api_url}bindings?source="
-        # 获取交换机下的所有队列
-        response = requests.request("GET", rabbitmq_api_url, auth=self._auth)
-        # response.raise_for_status()
-        if response.status_code == 200:
-            bindings = response.json()
-            if exchange_name:
-                # 过滤出属于指定交换机的队列
-                return [binding for binding in bindings if binding["source"] == exchange_name]
-            else:
-                return bindings
-        else:
-            # 记录请求失败的错误日志
-            rabbitmq_logger.error(
-                f"Failed to fetch bindings for exchange {exchange_name}: {response.status_code} - {response.text}")
-            return []
-
-    def get_all_queues(self, queue_name=None):
-        """
-        获取RabbitMQ中所有的队列信息或者指定。
-        result['backing_queue_status']['len'] == Ready
-        result['backing_queue_status']['num_pending_acks'] == Unacked
-        result['backing_queue_status']['num_pending_acks'] + result['backing_queue_status']['len'] == Total
-        返回:
-        - list: 包含所有队列名称的列表。
-        """
-        url = f"{self._rabbitmq_api_url}queues"
-        try:
-            response = requests.get(url, auth=self._auth)
-            response.raise_for_status()  # 检查请求是否成功
-            queue_info = response.json()
-            if queue_name:
-                return [q for q in queue_info if q['name'] == queue_name]
-            else:
-                return queue_info
-
-        except requests.RequestException as e:
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying i")
-        return []
-
-    def get_all_exchanges(self, exchange_name=None,is_amq=False):
-        """
-        获取RabbitMQ中所有的交换机名称。
-
-        返回:
-        - list: 包含所有队列名称的列表。
-        """
-        url = f"{self._rabbitmq_api_url}exchanges"
-        try:
-            response = requests.get(url, auth=self._auth)
-            response.raise_for_status()  # 检查请求是否成功
-            exchange_info = response.json()
-            if exchange_name:
-                return [q for q in exchange_info if q['name'] == exchange_name]
-            else:
-                if is_amq:
-                    return exchange_info
-                else:
-                    return [q for q in exchange_info if "amq" not in q['name']]
-        except requests.RequestException as e:
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying i")
-        return []
-
-    def get_connections(self, host=None, user=None):
-        """
-        获取当前RabbitMQ服务器上的连接列表。
-
-        通过RabbitMQ Management API获取当前的连接信息，并根据提供的主机或用户过滤结果。
-
-        参数:
-        - host (可选): 用于过滤连接的主机名称。
-        - user (可选): 用于过滤连接的用户名。
-
-        返回:
-        - 如果提供了host或user参数，则返回匹配的连接列表。
-        - 如果没有提供过滤条件，则返回所有连接的列表。
-        - 在发生请求错误时，返回空列表，并记录错误信息。
-        """
-        # 构造请求连接的URL
-        url = f"{self._rabbitMQ_api_url}connections"
-        try:
-            # 发送HTTP GET请求获取连接信息
-            response = requests.get(url, auth=self._auth)
-            # 检查请求是否成功
-            response.raise_for_status()
-            # 解析响应中的JSON数据，获取连接列表
-            connections = response.json()
-            # 根据提供的主机或用户参数进行过滤
-            if host:
-                return [q for q in connections if q['host'] == host]
-            if user:
-                return [q for q in connections if q['user'] == user]
-            # 返回所有连接的列表
-            return connections
-        except requests.RequestException as e:
-            # 在发生请求错误时，记录错误信息
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying in {self._retry_interval} seconds.")
-        # 在发生错误时返回空列表
-
-    def get_channels(self, user=None, state=None):
-        """
-        获取当前RabbitMQ服务器上的通道列表。
-
-        通过RabbitMQ Management API获取当前的通道信息，并根据提供的通道名称或状态进行过滤。
-
-        参数:
-        - user (可选): 用于过滤连接的用户名。
-        - state (可选): 用于过滤通道的状态。
-
-        返回:
-        - 如果提供了name或state参数，则返回匹配的通道列表。
-        - 如果没有提供过滤条件，则返回所有通道的列表。
-        - 在发生请求错误时，返回空列表，并记录错误信息。
-        """
-        # 构造请求通道的URL
-        url = f"{self._rabbitmq_api_url}channels"
-        try:
-            # 发送HTTP GET请求获取通道信息
-            response = requests.get(url, auth=self._auth)
-            # 检查请求是否成功
-            response.raise_for_status()
-            # 解析响应中的JSON数据，获取通道列表
-            channels = response.json()
-            # 根据提供的通道名称或状态进行过滤
-            if user:
-                return [c for c in channels if c['user'] == user]
-            if state:
-                return [c for c in channels if c['state'] == state]
-            # 返回所有通道的列表
-            return channels
-        except requests.RequestException as e:
-            # 在发生请求错误时，记录错误信息
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying in {self._retry_interval} seconds.")
-        # 在发生错误时返回空列表
-        return []
-
     def migrate_rabbitmq(
         self,
         source_config,
@@ -607,13 +580,14 @@ class RabbitManager:
         返回:
         无返回值。
         """
+        source_rabbit_api = RabbitApi(rabbit_config=source_config)
         # 创建源RabbitMQ管理器
         source_rabbitmq_manager = RabbitManager(rabbit_config=source_config)
         # 创建目标RabbitMQ管理器
         target_rabbitmq_manager = RabbitManager(rabbit_config=target_config)
 
         # 获取并筛选需要迁移的交换机
-        source_all_exchanges = source_rabbitmq_manager.get_all_exchanges()
+        source_all_exchanges = source_rabbit_api.get_all_exchanges()
         if not_exchange_list:
             source_all_exchanges = [exchange for exchange in source_all_exchanges if exchange['name'] not in not_exchange_list]
         if exchange_list:
@@ -621,7 +595,7 @@ class RabbitManager:
 
         # 迁移交换机及其绑定的队列
         for source_exchange in source_all_exchanges:
-            source_bing_queues = source_rabbitmq_manager.get_exchange_bindings(source_exchange['name'])
+            source_bing_queues = source_rabbit_api.get_exchange_bindings(source_exchange['name'])
             if not_queue_list:
                 source_bing_queues = [queue for queue in source_bing_queues if
                                         queue['routing_key'] not in not_queue_list]
@@ -672,137 +646,166 @@ class RabbitManager:
         consumer_count = queue.method.consumer_count
         return consumer_count
 
+class RabbitApi:
+    def __init__(self,rabbit_config):
+        self._rabbitmq_api_port = rabbit_config.get('api_port', 15672)
+        self._rabbitmq_host = rabbit_config.get('host', "127.0.0.1")
+        self._rabbitmq_user = rabbit_config.get('user', None)
+        self._rabbitmq_password = rabbit_config.get('password', None)
+        self._rabbitmq_api_url = f"http://{self._rabbitmq_host}:{self._rabbitmq_api_port}/api/"
+        # 构造RabbitMQ API的URL
 
-
-class RabbitConfig:
-    def __init__(self,RabbitMq=None):
+        # 使用RabbitMQ的认证信息
+        self._auth = (self._rabbitmq_user, self._rabbitmq_password)
+    def get_channels(self, user=None, state=None):
         """
-        初始化 RabbitMQ 配置
+        获取当前RabbitMQ服务器上的通道列表。
 
-        :param db_settings: 包含 RabbitMQ 配置的设置对象
-        """
-        self.RabbitMq = RabbitMq if RabbitMq else mqSettings.RabbitMq
-        self.RabbitMqKey = None
-
-    def connfig_to_dict(self, **keyword):
-        """
-        将配置转换为字典
-
-        :return: 包含所有配置的字典
-        """
-        return {
-            "host": keyword.get("host", mqSettings.host),
-            "port": keyword.get("port", mqSettings.port),
-            "user": keyword.get("user", mqSettings.user),
-            "password": keyword.get("password", mqSettings.password),
-            "api_port": keyword.get("api_port", mqSettings.api_port),
-            "virtual_host":keyword.get("virtual_host", mqSettings.virtual_host),
-            "connection_attempts": keyword.get("connection_attempts", mqSettings.connection_attempts),
-            "retry_delay": keyword.get("retry_delay", mqSettings.retry_delay),
-            "socket_timeout": keyword.get("socket_timeout", mqSettings.socket_timeout),
-            "max_rebbitmq_prefetch_count": keyword.get("max_rebbitmq_prefetch_count",
-                                                       mqSettings.prefetch_count),
-            "max_consumer": keyword.get("max_consumer", mqSettings.max_consumer),
-            "heartbeat": keyword.get("heartbeat", mqSettings.heartbeat),
-            "rabbitmq_pool_max_overflow": keyword.get("blocked_connection_timeout", mqSettings.blocked_connection_timeout),
-            "blocked_connection_timeout":keyword.get("rabbitmq_pool_max_overflow", mqSettings.pool_max_overflow)
-        }
-
-    def get_RabbitMqKey(self, keyword: str = None):
-        """
-        根据提供的关键字获取RabbitMQ的键值。
-
-        此方法从RabbitMQ实例中获取与给定关键字相关联的值，并将其赋给实例变量RabbitMqKey。
-        如果没有提供关键字，或者关键字在RabbitMQ实例中不存在，那么self.RabbitMqKey将被设置为None。
+        通过RabbitMQ Management API获取当前的通道信息，并根据提供的通道名称或状态进行过滤。
 
         参数:
-        - keyword (str): 用于在RabbitMQ中查找的键的关键字。如果未提供，则默认为None。
+        - user (可选): 用于过滤连接的用户名。
+        - state (可选): 用于过滤通道的状态。
 
         返回:
-        此方法没有显式返回值。但是，它通过修改实例变量self.RabbitMqKey来存储检索到的值。
+        - 如果提供了name或state参数，则返回匹配的通道列表。
+        - 如果没有提供过滤条件，则返回所有通道的列表。
+        - 在发生请求错误时，返回空列表，并记录错误信息。
         """
-        self.RabbitMqKey = self.RabbitMq.get(keyword)
+        # 构造请求通道的URL
+        url = f"{self._rabbitmq_api_url}channels"
+        try:
+            # 发送HTTP GET请求获取通道信息
+            response = requests.get(url, auth=self._auth)
+            # 检查请求是否成功
+            response.raise_for_status()
+            # 解析响应中的JSON数据，获取通道列表
+            channels = response.json()
+            # 根据提供的通道名称或状态进行过滤
+            if user:
+                return [c for c in channels if c['user'] == user]
+            if state:
+                return [c for c in channels if c['state'] == state]
+            # 返回所有通道的列表
+            return channels
+        except requests.RequestException as e:
+            # 在发生请求错误时，记录错误信息
+            rabbitmq_logger.error(
+                f"Failed to connect to RabbitMQ Management API, retrying in {self.retry_delay} seconds.")
+        # 在发生错误时返回空列表
+        return []
 
-    def get_RabbitMqType(self):
+    def get_connections(self, host=None, user=None):
         """
-        获取RabbitMQ的类型
+        获取当前RabbitMQ服务器上的连接列表。
 
-        该方法用于返回当前实例的RabbitMQ类型，通过访问RabbitMqKey属性的type成员实现
-        """
-        return self.RabbitMqKey.type
-    def get_RabbitMqExchangeName(self):
-        """
-        获取RabbitMQ的Exchange名称。
-
-        该方法从实例的RabbitMqKey属性中获取并返回Exchange名称。
-        主要目的是提供一个简单的方法来访问RabbitMQ配置中的Exchange名称属性。
-
-        返回:
-        str: RabbitMQ的Exchange名称。
-        """
-        return self.RabbitMqKey.exchange_name
-
-    def get_RabbitMqNotConntrol(self):
-        """
-        获取RabbitMQ非控制键值
-
-        该方法返回一个表示非控制的RabbitMQ键值。这主要用于在系统中标识或处理那些不用于控制目的的RabbitMQ连接或消息。
-
-        Returns:
-            not_control: 一个表示非控制的RabbitMQ键值。
-        """
-        return self.RabbitMqKey.not_control
-
-    def get_RabbitMqStart(self, keyword=None):
-        """
-        根据关键字获取RabbitMQ队列开始监控的键值。
-
-        如果提供了keyword参数，则返回与该keyword相关联的队列开始监控的键值；
-        如果没有提供keyword参数，则返回整个queue_start_monitoring对象。
+        通过RabbitMQ Management API获取当前的连接信息，并根据提供的主机或用户过滤结果。
 
         参数:
-        keyword (str, optional): 队列的关键字。默认为None。
+        - host (可选): 用于过滤连接的主机名称。
+        - user (可选): 用于过滤连接的用户名。
 
         返回:
-        str 或对象: 如果提供了keyword，则返回对应的键值；否则返回整个监控对象。
+        - 如果提供了host或user参数，则返回匹配的连接列表。
+        - 如果没有提供过滤条件，则返回所有连接的列表。
+        - 在发生请求错误时，返回空列表，并记录错误信息。
         """
-        if keyword:
-            data_obj = self.RabbitMqKey.queue_start_monitoring.get(keyword)
-            if data_obj:
-                return data_obj.__dict__
+        # 构造请求连接的URL
+        url = f"{self._rabbitmq_api_url}connections"
+        try:
+            # 发送HTTP GET请求获取连接信息
+            response = requests.get(url, auth=self._auth)
+            # 检查请求是否成功
+            response.raise_for_status()
+            # 解析响应中的JSON数据，获取连接列表
+            connections = response.json()
+            # 根据提供的主机或用户参数进行过滤
+            if host:
+                return [q for q in connections if q['host'] == host]
+            if user:
+                return [q for q in connections if q['user'] == user]
+            # 返回所有连接的列表
+            return connections
+        except requests.RequestException as e:
+            # 在发生请求错误时，记录错误信息
+            rabbitmq_logger.error(f"Failed to connect to RabbitMQ Management API")
+
+    def get_all_exchanges(self, exchange_name=None,is_amq=False):
+        """
+        获取RabbitMQ中所有的交换机名称。
+
+        返回:
+        - list: 包含所有队列名称的列表。
+        """
+        url = f"{self._rabbitmq_api_url}exchanges"
+        try:
+            response = requests.get(url, auth=self._auth)
+            response.raise_for_status()  # 检查请求是否成功
+            exchange_info = response.json()
+            if exchange_name:
+                return [q for q in exchange_info if q['name'] == exchange_name]
             else:
-                return None
-        else:
-            return self.RabbitMqKey.queue_start_monitoring
-    def get_RabbitMqMonitor(self, queue_name=None):
-        """
-        获取RabbitMQ监控信息。
+                if is_amq:
+                    return exchange_info
+                else:
+                    return [q for q in exchange_info if "amq" not in q['name']]
+        except requests.RequestException as e:
+            rabbitmq_logger.error(
+                f"Failed to connect to RabbitMQ Management API, retrying i")
+        return []
 
-        此函数根据提供的队列名称，从RabbitMQ监控队列中查找并返回相应的队列监控信息。
-        如果没有提供队列名称，则返回所有队列的监控信息。
+    def get_all_queues(self, queue_name=None):
+        """
+        获取RabbitMQ中所有的队列信息或者指定。
+        result['backing_queue_status']['len'] == Ready
+        result['backing_queue_status']['num_pending_acks'] == Unacked
+        result['backing_queue_status']['num_pending_acks'] + result['backing_queue_status']['len'] == Total
+        返回:
+        - list: 包含所有队列名称的列表。
+        """
+        url = f"{self._rabbitmq_api_url}queues"
+        try:
+            response = requests.get(url, auth=self._auth)
+            response.raise_for_status()  # 检查请求是否成功
+            queue_info = response.json()
+            if queue_name:
+                return [q for q in queue_info if q['name'] == queue_name]
+            else:
+                return queue_info
+
+        except requests.RequestException as e:
+            rabbitmq_logger.error(
+                f"Failed to connect to RabbitMQ Management API, retrying i")
+        return []
+
+    def get_exchange_bindings(self, exchange_name=None):
+        """
+        获取所有绑定列表或者指定的绑定列表
 
         参数:
-        - queue_name (str, optional): 需要监控的队列名称。默认为None。
+        exchange_name (str): 交换机名称。如果不指定，则返回所有交换机下的队列；否则返回指定交换机下的队列。
 
         返回:
-        - 如果提供了queue_name并且找到了匹配的队列，则返回该队列的监控信息。
-        - 如果提供了queue_name但没有找到匹配的队列，则返回None。
-        - 如果queue_name为None，则返回所有队列的监控信息列表。
+        list: 绑定到指定交换机的队列列表。如果未找到任何队列或请求失败，则返回空列表。
         """
-        # 获取RabbitMQ监控队列
-        queue_monitor_queue = self.RabbitMqKey.queue_monitor_queue
+        # 构造RabbitMQ API的URL
+        rabbitmq_api_url = f"{self._rabbitmq_api_url}bindings?source="
+        # 获取交换机下的所有队列
+        response = requests.request("GET", rabbitmq_api_url, auth=self._auth)
+        # response.raise_for_status()
+        if response.status_code == 200:
+            bindings = response.json()
+            if exchange_name:
+                # 过滤出属于指定交换机的队列
+                return [binding for binding in bindings if binding["source"] == exchange_name]
+            else:
+                return bindings
+        else:
+            # 记录请求失败的错误日志
+            rabbitmq_logger.error(
+                f"Failed to fetch bindings for exchange {exchange_name}: {response.status_code} - {response.text}")
+            return []
 
-        # 如果提供了具体的队列名称
-        if queue_name:
-            # 遍历监控队列，寻找匹配的队列名称
-            for queue in queue_monitor_queue:
-                if queue.get("queue_name") == queue_name:
-                    # 如果找到了匹配的队列，返回其监控信息
-                    return queue
-            # 如果遍历结束后没有找到匹配的队列，返回None
-            return None
-        # 如果没有提供队列名称，返回所有队列的监控信息
-        return queue_monitor_queue
 
 class RabbitMQConnectionPool:
     """
@@ -955,7 +958,3 @@ __all__ = [
     "rabbit_config",
     "RabbitMQConnectionPool",
 ]
-
-
-
-

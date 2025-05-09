@@ -8,7 +8,8 @@ import asyncio
 from pydantic import BaseModel,Field
 from datetime import datetime
 from typing import List,Optional
-from app.types.response import ResponseFail
+
+from app.utils import ResponseFail
 from config.database import getDatabaseSessionAsync, getDatabaseSession
 
 
@@ -488,29 +489,6 @@ class BaseCRUD:
                 else:
                     raise e
 
-    @staticmethod
-    def model_to_dict(model):
-        """
-        将数据库模型实例转换为字典
 
-        参数:
-        model - 数据库模型实例
-
-        返回:
-        包含模型数据的字典，其中键是列名，值是对应的值
-        """
-        # 使用列表推导式和getattr函数将模型的每个列的名和值转换为字典
-        return {c.name: getattr(model, c.name) for c in model.__table__.columns}
-
-    @staticmethod
-    def model_to_sql(Base):
-        # 创建内存中的数据库引擎
-        engine = create_engine('sqlite:///:memory:')
-
-        # 获取元数据
-        metadata = Base.metadata
-        # 生成 SQL 语句
-        sql_statements = "\n".join(str(CreateTable(table).compile(engine)) for table in metadata.sorted_tables)
-        return sql_statements
 
 __all__ = ['BaseCRUD']

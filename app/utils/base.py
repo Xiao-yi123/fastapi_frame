@@ -14,12 +14,14 @@ from datetime import datetime, timedelta
 from config.settings import appSettings
 
 
-def is_within_last_seven_days(timestamp, day=7):
+def is_within_last_seven_days(timestamp, t_type: str = 'day',t_num=7):
     """
-    判断给定的时间戳是否在过去 day 天内。
+    判断给定的时间戳是否在过去指定天数内。
 
     :param timestamp: 时间戳（整数）
-    :return: 如果时间戳在过去7天内返回 True，否则返回 False
+    :param t_type: 时间类型，默认为'day'，可选值包括'day', 'hour', 'min', 'second'
+    :param t_num: 时间数量，默认为7，表示过去7天，与其他参数t_type配合使用
+    :return: 如果时间戳在指定过去时间内返回 True，否则返回 False
     """
     # 将时间戳转换为 datetime 对象
     dt_object = datetime.fromtimestamp(timestamp)
@@ -27,10 +29,25 @@ def is_within_last_seven_days(timestamp, day=7):
     # 获取当前时间
     now = datetime.now()
 
-    # 计算7天前的时间
-    seven_days_ago = now - timedelta(days=day)
+    # 根据时间类型计算过去的时间点
+    match t_type:
+        case "day":
+            # 计算过去t_num天的时间点
+            seven_days_ago = now - timedelta(days=t_num)
+        case "hour":
+            # 计算过去t_num小时的时间点
+            seven_days_ago = now - timedelta(hours=t_num)
+        case "min":
+            # 计算过去t_num分钟的时间点
+            seven_days_ago = now - timedelta(minutes=t_num)
+        case "second":
+            # 计算过去t_num秒的时间点
+            seven_days_ago = now - timedelta(seconds=t_num)
+        case _:
+            # 如果时间类型不匹配，返回False
+            return False
 
-    # 判断时间戳是否在过去7天内
+    # 判断时间戳是否在指定的过去时间内
     return seven_days_ago <= dt_object <= now
 
 

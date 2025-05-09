@@ -1,8 +1,8 @@
+import re
 from urllib.parse import parse_qs
-import requests
+
 import aiohttp
 import aiohttp_socks
-import re
 
 
 class RequestTools:
@@ -92,17 +92,18 @@ class RequestTools:
 
     @staticmethod
     async def send_http_request_async(
-        method: str,
-        url: str,
-        headers=None,
-        params=None,
-        data=None,
-        proxies: str = None,
-        timeout: int = 60,
-        return_format: str = "content",
-        verify_ssl: bool = False,
-        is_response: bool = False,
-        **kwargs,
+            method: str,
+            url: str,
+            headers=None,
+            params=None,
+            data=None,
+            proxies: str = None,
+            timeout: int = 60,
+            return_format: str = "content",
+            verify_ssl: bool = False,
+            is_response: bool = False,
+            limit: int = 10,
+            **kwargs,
     ):
         """
         发送异步 HTTP 请求。
@@ -128,20 +129,22 @@ class RequestTools:
                 - 当 return_format 为 'text' 时，返回响应的文本内容。
                 - 当 return_format 为 'content' 时，返回响应的二进制内容。
         """
-        # 如果有代理，创建代理连接器
-        connector = aiohttp_socks.ProxyConnector.from_url(proxies) if proxies else None
+        # 设置连接池大小，这里设置最大连接数为 10
+        # 如果有代理，创建代理连接器并设置连接池
+        connector = aiohttp_socks.ProxyConnector.from_url(proxies, limit=limit) if proxies else aiohttp.TCPConnector(
+            limit=limit)
         # 创建异步会话
         async with aiohttp.ClientSession(connector=connector) as session:
             # 发送异步 HTTP 请求
             async with session.request(
-                method=method,
-                url=url,
-                params=params,
-                data=data,
-                headers=headers,
-                timeout=timeout,
-                ssl=verify_ssl,
-                **kwargs,
+                    method=method,
+                    url=url,
+                    params=params,
+                    data=data,
+                    headers=headers,
+                    timeout=timeout,
+                    ssl=verify_ssl,
+                    **kwargs,
             ) as response:
                 if is_response:
                     # 如果需要返回响应对象和内容，则返回包含它们的字典
@@ -193,5 +196,6 @@ class RequestTools:
         except Exception as e:
             # 如果出现异常，返回包含原始 URL 和错误信息的字典
             return {"original_url": url, "error": str(e)}
+
 
 __all__ = ["RequestTools"]
