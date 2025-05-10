@@ -54,3 +54,34 @@ class UserCRUD(BaseCRUD):
 
 __all__ = ['UserCRUD']
 
+if __name__ == '__main__':
+    u = UserCRUD()
+    # TODO 以下示例都是同步方法 异步的方法名称后缀没有 _sync 使用异步记得使用 await
+    # 同步查询符合条件的数据(所有)
+    datas = u.get_list_sync(nickname="demo",id=1)
+    # 序列化返回dict
+    u.serialization(all_data=datas, include=["nickname", "id"], exclude=["password"])
+    # 同步查询符合条件数据(单个)
+    data = u.get_first_sync(nickname="demo",id=1)
+    # 序列化返回dict
+    u.serialization(all_data=[data], include=["nickname", "id"], exclude=["password"])
+    # 同步查询符合条件的数据(分页)
+    u.get_list_page_sync(current=1,size=10,nickname="demo",id=1)
+    # 同步查询符合条件的数据(随机) 可以指定数量
+    u.get_random_sync(pram_num=1,nickname="demo",id=1)
+    # 创建
+    u.create_sync(create={
+        "nickname":"",
+        # ...
+    })
+    # 更新
+    u.update_by_id_sync(id=1,update={
+        "nickname":"",
+        # ...
+    })
+    # 删除
+    u.delete_by_id_sync(id=1)
+    # 批量删除
+    u.batch_delete_sync(ids=[1,2,3])
+
+

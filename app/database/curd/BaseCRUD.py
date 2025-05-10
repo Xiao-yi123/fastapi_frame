@@ -343,12 +343,11 @@ class BaseCRUD:
         # 返回删除成功的记录数量
         return len(results)
 
-    def batch_delete_sync(self, user_id: int, ids: list):
+    def batch_delete_sync(self,ids: list):
         with getDatabaseSession(connect_str=self.connect_str) as session:
             query = session.query(self._model)
             result = query.filter(
                 self._model.id.in_(ids),
-                self._model.user_id == user_id
             ).delete(synchronize_session=False)
             session.commit()
         return result
