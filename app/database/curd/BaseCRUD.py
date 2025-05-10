@@ -1,6 +1,6 @@
 from sqlalchemy import and_, func, create_engine
 from sqlalchemy.future import select
-from sqlalchemy.orm import subqueryload
+from sqlalchemy.orm import subqueryload,joinedload
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql.ddl import CreateTable
 
