@@ -9,17 +9,18 @@ Copyright (c) 2024 一云天网络科技
 All rights reserved.
 """
 
-from contextlib import contextmanager,asynccontextmanager
+from contextlib import contextmanager, asynccontextmanager
 
 from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from config.settings import dbSettings
+from config.settings import dbSettings, redisSettings
+
 
 @contextmanager
-def getDatabaseSession(connect_str:None|str=None,autoCommitByExit:bool=True):
+def getDatabaseSession(connect_str: None | str = None, autoCommitByExit: bool = True):
     # 数据库配置
     if connect_str is None:
         connect_str = f"{dbSettings.user}:{dbSettings.password}@{dbSettings.host}:{dbSettings.port}/{dbSettings.database}"
@@ -48,9 +49,10 @@ def getDatabaseSession(connect_str:None|str=None,autoCommitByExit:bool=True):
         _session.rollback()
         raise e
 
+
 # 定义异步上下文管理器
 @asynccontextmanager
-async def getDatabaseSessionAsync(connect_str:None|str=None,autoCommitByExit=True):
+async def getDatabaseSessionAsync(connect_str: None | str = None, autoCommitByExit=True):
     if connect_str is None:
         connect_str = f"{dbSettings.user}:{dbSettings.password}@{dbSettings.host}:{dbSettings.port}/{dbSettings.database}"
     # 数据库配置
@@ -80,14 +82,22 @@ async def getDatabaseSessionAsync(connect_str:None|str=None,autoCommitByExit=Tru
             await session.rollback()
             raise e
 
-
     # 定义 Redis 连接池
 
+
 @asynccontextmanager
-async def getRedisConnectionAsync(connect_str:None|str=None):
+async def getRedisConnectionAsync(connect_str: None | str = None):
     if connect_str is None:
-        connect_str = dbSettings.redis_connect_str
-    redis_pool = ConnectionPool.from_url(f"redis://{connect_str}", decode_responses=True)
+        connect_str = f"{redisSettings.host}:{redisSettings.port}"
+    redis_pool = ConnectionPool.from_url(
+        url=f"redis://{connect_str}",
+        decode_responses=redisSettings.decode_responses,  # 是否自动解码响应为字符串
+        max_connections=redisSettings.max_connections,  # 最大连接数
+        socket_timeout=redisSettings.timeout,  # 套接字读取超时时间（秒）
+        socket_connect_timeout=redisSettings.connect_timeout,  # 连接建立超时时间（秒）
+        retry_on_timeout=redisSettings.retry_on_timeout,  # 超时时是否重试
+        health_check_interval=redisSettings.health_check_interval,  # 定期健康检查间隔
+    )
 
     """使用异步上下文管理器管理 Redis 连接"""
     redis_client = Redis(connection_pool=redis_pool)
