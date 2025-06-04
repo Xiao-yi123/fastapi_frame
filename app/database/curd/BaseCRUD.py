@@ -10,9 +10,8 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import subqueryload, joinedload
 from sqlalchemy.sql.ddl import CreateTable
 
-from app.database import XhsNoteModel
-from app.types.request import PagingQueryParams
-from app.types.response import ResponseFail
+from app.types import PagingQueryParams
+from app.utils import ResponseFail
 from config.database import getDatabaseSessionAsync, getDatabaseSession
 
 
@@ -422,7 +421,7 @@ class BaseCRUD:
             session.refresh(create_data)  # 刷新以获取新用户的ID
             return create_data
 
-    async def update_by_id(self, id: int, update):
+    async def update_by_id(self, id: int, update,**kwargs):
         """
         根据ID更新一条记录。
 
@@ -437,8 +436,11 @@ class BaseCRUD:
             update_dict = update
         else:
             raise ValueError("create 参数必须是 Pydantic 模型实例 or dict类型")
+        filters = []
+        if kwargs:
+            filters = self.get_filters(self._model,**kwargs)
         async with self.getDatabaseSessionAsync(connect_str=self.connect_str) as session:
-            query = await session.execute(select(self._model).where(self._model.id == id))
+            query = await session.execute(select(self._model).where(and_(self._model.id == id,*filters)))
             result = query.scalars().first()
             if result:
                 for key, value in update_dict.items():
@@ -446,7 +448,8 @@ class BaseCRUD:
                 await session.commit()
         return result
 
-    def update_by_id_sync(self, id: int, update):
+    def update_by_id_sync(self, id: int, update,**kwargs):
+
         # 检查 `update` 是否有 `dict` 方法
         if isinstance(update, BaseModel):
             update_dict = update.dict(exclude_unset=True)
@@ -454,13 +457,20 @@ class BaseCRUD:
             update_dict = update
         else:
             raise ValueError("create 参数必须是 Pydantic 模型实例 or dict类型")
+        filters = [self._model.id == id]
+
+        if kwargs:
+            extra_filters = self.get_filters(self._model, **kwargs)
+            filters.extend(extra_filters)
+
+        full_filter = and_(*filters)
         with self.getDatabaseSession(connect_str=self.connect_str) as session:
             query = session.query(self._model)  # 创建查询对象
-            result = query.filter(self._model.id == id).update(update_dict)  # 使用查询对象的update方法
+            result = query.filter(full_filter).update(update_dict)  # 使用查询对象的update方法
             session.commit()  # 提交事务
         return result
 
-    async def batch_update_by_ids(self, ids: List[int], update):
+    async def batch_update_by_ids(self, ids: List[int], update,**kwargs):
         """
         批量更新多条记录。
 
@@ -475,8 +485,11 @@ class BaseCRUD:
             update_dict = update
         else:
             raise ValueError("create 参数必须是 Pydantic 模型实例 or dict类型")
+        filters = []
+        if kwargs:
+            filters = self.get_filters(self._model, **kwargs)
         async with self.getDatabaseSessionAsync(connect_str=self.connect_str) as session:
-            query = await session.execute(select(self._model).where(self._model.id.in_(ids)))
+            query = await session.execute(select(self._model).where(and_(self._model.id.in_(ids),*filters)))
             results = query.scalars().all()
             for result in results:
                 for key, value in update_dict.items():
@@ -484,47 +497,68 @@ class BaseCRUD:
             await session.commit()
         return len(results)
 
-    def batch_update_by_ids_sync(self, ids: List[int], update):
+    def batch_update_by_ids_sync(self, ids: List[int], update,**kwargs):
+        filters = [self._model.id.in_(ids)]
+
+        if kwargs:
+            extra_filters = self.get_filters(self._model, **kwargs)
+            filters.extend(extra_filters)
+
+        full_filter = and_(*filters)
         with self.getDatabaseSession(connect_str=self.connect_str) as session:
             query = session.query(self._model)  # 创建查询对象
-            result = query.filter(self._model.id.in_(ids)).update(update, synchronize_session=False)  # 使用in_方法批量更新
+            result = query.filter(full_filter).update(update, synchronize_session=False)  # 使用in_方法批量更新
             session.commit()  # 提交事务
         return result
 
-    async def delete_by_id(self, id: int):
+    async def delete_by_id(self, id: int,**kwargs):
         """
         根据ID删除一条记录。
 
         :param id: 记录的ID。
         :return: 删除的记录对象。
         """
+        filters = []
+        if kwargs:
+            filters = self.get_filters(self._model, **kwargs)
         async with self.getDatabaseSessionAsync(connect_str=self.connect_str) as session:
-            query = await session.execute(select(self._model).where(self._model.id == id))
+            query = await session.execute(select(self._model).where(and_(self._model.id == id,*filters)))
             result = query.scalars().first()
             if result:
                 await session.delete(result)
                 await session.commit()
         return result
 
-    def delete_by_id_sync(self, id: int):
+    def delete_by_id_sync(self, id: int,**kwargs):
+        filters = [self._model.id==id]
+
+        if kwargs:
+            extra_filters = self.get_filters(self._model, **kwargs)
+            filters.extend(extra_filters)
+
+        full_filter = and_(*filters)
         with self.getDatabaseSession(connect_str=self.connect_str) as session:
             query = session.query(self._model)
-            result = query.filter(self._model.id == id).delete()
+            result = query.filter(full_filter).delete()
             session.commit()
         return result
 
-    async def batch_delete(self, ids: List[int]):
+    async def batch_delete(self, ids: List[int],**kwargs):
         """
         批量删除多条记录。
 
         :param ids: 记录的ID列表。
         :return: 删除成功的记录数量。
         """
+        filters = []
+        if kwargs:
+            filters = self.get_filters(self._model, **kwargs)
+
         # 异步获取数据库会话
         async with self.getDatabaseSessionAsync(connect_str=self.connect_str) as session:
             # 执行异步查询，根据用户ID和记录ID列表筛选出需要删除的记录
             query = await session.execute(
-                select(self._model).where(and_(self._model.id.in_(ids)))
+                select(self._model).where(and_(self._model.id.in_(ids),*filters))
             )
             # 获取查询结果列表
             results = query.scalars().all()
@@ -536,14 +570,22 @@ class BaseCRUD:
         # 返回删除成功的记录数量
         return len(results)
 
-    def batch_delete_sync(self, ids: list):
+    def batch_delete_sync(self, ids: list,**kwargs):
+        if not ids:
+            return 0  # 防止误删全表
+
+        filters = [self._model.id.in_(ids)]
+
+        if kwargs:
+            extra_filters = self.get_filters(self._model, **kwargs)
+            filters.extend(extra_filters)
+
+        full_filter = and_(*filters)
+
         with self.getDatabaseSession(connect_str=self.connect_str) as session:
-            query = session.query(self._model)
-            result = query.filter(
-                self._model.id.in_(ids),
-            ).delete(synchronize_session=False)
+            result = session.query(self._model).filter(full_filter).delete(synchronize_session=False)
             session.commit()
-        return result
+            return result
 
     def serialization(self, all_data, include: List[str] = None, exclude: List[str] = None):
         """
