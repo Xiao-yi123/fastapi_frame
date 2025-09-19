@@ -11,6 +11,8 @@ from typing import Optional, Any, Union, Generator
 from app.logs import rabbitmq_logger
 from config.settings import mqSettings
 
+from lib.mq_consumer import *
+
 class RabbitConfig:
     def __init__(self, rabbit_config: dict = mqSettings.RabbitMq):
         """
@@ -150,13 +152,6 @@ class RabbitConfig:
         if isinstance(start_queues, dict):
             queue_names.extend(start_queues.keys())
 
-        # 获取监控队列
-        monitor_queues = self.get_monitor_queues()
-        if isinstance(monitor_queues, list):
-            for queue in monitor_queues:
-                if isinstance(queue, dict) and 'queue_name' in queue:
-                    queue_names.append(queue['queue_name'])
-
         # 过滤不监控的队列
         if not include_not_control:
             not_control = self.get_not_control_queues()
@@ -234,8 +229,6 @@ class RabbitManager:
             for q_key, q_value in config_value.queue_start_monitoring.items():
                 if q_value.is_create_task:
                     self._create_key_dict[f"{exchange_name}_{q_value.queue_name}"] = q_value
-                    print(q_value)
-                    print(q_value.queue_fun)
     def _parse_int(self, value) -> Optional[int]:
         """安全解析整数值"""
         try:
@@ -390,7 +383,7 @@ class RabbitManager:
             # 创建任务字典
             dict_key = f"{method.exchange}_{method.routing_key}"
             if dict_key in self._create_key_dict.keys():
-                task = self.create_task(function_name=self._create_key_dict[dict_key].queue_fun,args=task.get("args"),kwargs=task)
+                task = self.create_task(*task.get("args"),function_name=self._create_key_dict[dict_key].queue_fun,**task)
 
             # 验证任务字典
             if isinstance(task, dict) and task.get("function_name"):
@@ -878,45 +871,67 @@ class RabbitMQConnectionPool:
         获取一个RabbitMQ连接（上下文管理器方式）
         """
         connection = None
+        lock = None
 
         with self._condition:
             # 等待可用连接
-            while len(self._connections) == 0 and self._active_connections >= self.pool_size:
-                self._condition.wait()
+            wait_count = 0
+            while len(self._connections) == 0 and self._active_connections >= self.pool_size and self.pool_size > 0:
+                wait_count += 1
+                if wait_count > 10:  # 最多等待10次
+                    raise Exception("Connection pool timeout")
+                self._condition.wait(timeout=1)
 
             if self._connections:
                 connection, lock = self._connections.pop()
             else:
-                connection = self._create_connection()
-                lock = threading.Lock()
+                # 如果连接池大小为0或者还有空间，则创建新连接
+                if self.pool_size == 0 or self._active_connections < self.pool_size:
+                    connection = self._create_connection()
+                    lock = threading.Lock()
+                else:
+                    raise Exception("Connection pool exhausted")
 
             self._active_connections += 1
 
         try:
             # 检查连接有效性
             if not self._is_connection_valid(connection):
-                connection.close()
+                try:
+                    connection.close()
+                except:
+                    pass
                 connection = self._create_connection()
 
-            lock.acquire()
+            if lock:
+                lock.acquire()
             yield connection
 
         except Exception as e:
             rabbitmq_logger.error(f"Error using connection: {e}")
-            # 创建新连接替换失效的连接
-            connection.close()
-            connection = self._create_connection()
-            yield connection
+            # 不要在异常处理中重新抛出连接，这可能导致上下文管理器问题
+            raise  # 重新抛出原始异常
 
         finally:
-            lock.release()
+            # 确保资源正确释放
+            try:
+                if lock:
+                    lock.release()
+            except:
+                pass
+
             with self._condition:
-                self._active_connections -= 1
-                if self._is_connection_valid(connection):
-                    self._connections.append((connection, lock))
-                else:
-                    connection.close()
-                self._condition.notify()
+                try:
+                    if connection and self._is_connection_valid(connection):
+                        self._connections.append((connection, lock))
+                    else:
+                        if connection:
+                            connection.close()
+                except:
+                    pass
+                finally:
+                    self._active_connections -= 1
+                    self._condition.notify_all()
 
     def get_connection_nowait(self) -> tuple:
         """立即获取连接（不等待）"""
@@ -990,7 +1005,7 @@ RabbitPool = RabbitMQConnectionPool(
 )
 
 __all__ = [
-    # "RabbitPool",
+    "RabbitPool",
     "RabbitConfig",
     "RabbitManager",
     "RabbitMQConnectionPool",
@@ -1009,7 +1024,7 @@ if __name__ == '__main__':
 
     # 获取队列配置
     start_queues = config.get_start_monitoring_queues()
-    specific_queue = config.get_start_monitoring_queues("collection_comment")
+    specific_queue = config.get_start_monitoring_queues("clear_note_hot_note")
 
     # 检查配置类型
     if config.is_start_monitoring_enabled():

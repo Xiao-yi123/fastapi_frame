@@ -27,7 +27,7 @@ class RabbitMqStartMonitoring(BaseModel):
     queue_fun: str = Field(default="", description="与队列相关的函数名称")
     max_consumer: int = Field(default=0,ge=0, description="队列的最大消费者数量")
     is_create_task: bool = Field(
-        default=True,
+        default=False,
         description="是否创建任务"
     )
 
