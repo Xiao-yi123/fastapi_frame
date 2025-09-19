@@ -8,8 +8,6 @@ from sqlalchemy.future import select
 from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.selectable import Select  # ✅ 添加导入语句
 from sqlalchemy.orm.query import Query       # ✅ 可选：用于同步 Query 类型判断
-
-from app.types import PagingQueryParams
 from config.database import getDatabaseSessionAsync, getDatabaseSession
 
 
@@ -257,26 +255,6 @@ class UtilsMixin:
         # 生成 SQL 语句
         sql_statements = "\n".join(str(CreateTable(table).compile(engine)) for table in metadata.sorted_tables)
         return sql_statements
-
-    @staticmethod
-    async def query_data(curd, param: PagingQueryParams, other_param: dict = {}):
-        # 将请求参数转换为字典，排除None值
-        new_param = param.dict(exclude_none=True)
-        if other_param:
-            new_param.update(other_param)
-        # 使用转换后的参数获取接收记录列表数据
-        data = await curd.get_list_page(**new_param)
-        # 序列化数据为InDBaseSchema格式
-        new_data = curd.serialization(data)
-        # 移除参数中的分页相关字段
-        if 'current' in new_param: del new_param['current']
-        if 'size' in new_param: del new_param['size']
-        # 使用更新后的参数获取接收记录总数用于查询符合条件的数量
-        num = await curd.get_count(**new_param)
-        return {
-            "data": new_data,
-            "total": num,
-        }
 
     def serialization(self, all_data, include: List[str] = None, exclude: List[str] = None):
         """
