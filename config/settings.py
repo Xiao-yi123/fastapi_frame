@@ -54,6 +54,7 @@ class AppConfigSettings(BaseSettings):
     openapi_url: Union[str | bool] = "/openapi.json"
     prefix: str = '/'
     debug:bool = True
+    start_mq: bool = False
 
     port: int = 8080
     host: str = "0.0.0.0 "
