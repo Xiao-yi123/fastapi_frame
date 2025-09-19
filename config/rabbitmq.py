@@ -102,25 +102,6 @@ class RabbitConfig:
             return queue_obj.__dict__ if queue_obj and hasattr(queue_obj, '__dict__') else queue_obj
         return {name: q.__dict__ if hasattr(q, '__dict__') else q for name, q in queues.items()}
 
-    def get_monitor_queues(self, queue_name: str = None) -> Union[dict, list]:
-        """
-        获取监控队列配置
-
-        :param queue_name: 可选，指定队列名称
-        :return: 队列配置字典或列表
-        """
-        config = self.get_config()
-        queues = config.get('queue_monitor_queue', [])
-
-        if queue_name:
-            for queue in queues:
-                q_dict = queue.__dict__ if hasattr(queue, '__dict__') else queue
-                if q_dict.get('queue_name') == queue_name:
-                    return q_dict
-            return None
-
-        return [q.__dict__ if hasattr(q, '__dict__') else q for q in queues]
-
     def get_config_types(self) -> list:
         """
         获取配置类型列表
@@ -503,6 +484,19 @@ class RabbitManager:
             rabbitmq_logger.error(f"Error while consuming tasks: {e}")
             raise
 
+    def _consume_task_wrapper(self, exchange_name: str, queue_name: str):
+        """
+        消费任务的包装器，为每个线程创建独立的连接
+        """
+        # 创建新的 RabbitManager 实例
+        rabbit_manager = RabbitManager(RabbitConfig())
+        try:
+            rabbit_manager.consume_tasks(exchange_name, queue_name)
+        except Exception as e:
+            rabbitmq_logger.error(f"Error in consumer thread: {e}")
+        finally:
+            rabbit_manager.close()
+
     def start_monitoring(self, exchange_name: str, queue_name: dict = None, not_control: list = []):
         """
         开始监控指定的交换机下的队列。
@@ -525,8 +519,9 @@ class RabbitManager:
 
             for n in range(queue.max_consumer if queue.max_consumer else self._max_consumer):
                 threading_name = f"{exchange_name}-{queue.queue_name}-{n}"
+                # 为每个线程创建独立的 RabbitManager 实例
                 consumer_thread = threading.Thread(
-                    target=self.consume_tasks,
+                    target=self._consume_task_wrapper,
                     name=threading_name,
                     daemon=True,
                     args=(exchange_name, queue.queue_name)
@@ -988,11 +983,11 @@ class RabbitMQConnectionPool:
 
 
 # 全局配置
-# rabbit_config = RabbitConfig()
-# RabbitPool = RabbitMQConnectionPool(
-#     RabbitConfig(),
-#     pool_size=RabbitConfig().config_to_dict().get("rabbitmq_pool_max_overflow", 10)
-# )
+rabbit_config = RabbitConfig()
+RabbitPool = RabbitMQConnectionPool(
+    RabbitConfig(),
+    pool_size=RabbitConfig().config_to_dict().get("rabbitmq_pool_max_overflow", 10)
+)
 
 __all__ = [
     # "RabbitPool",
