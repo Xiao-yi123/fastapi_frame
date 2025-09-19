@@ -35,14 +35,12 @@ app = create_app()
 
 # 在后台线程启动消费者
 if appSettings.start_mq:
-    rabbit_config = RabbitConfig()
-    rabbit_manager = RabbitManager(rabbit_config=rabbit_config.connfig_to_dict())
-    for item in rabbit_config.RabbitMq.values():
-        if "start_monitoring" in item.type:
-            rabbit_manager.start_monitoring(exchange_name=item.exchange_name,queue_name=item.queue_start_monitoring)
-        if "monitor_queue" in item.type:
-            rabbit_manager.monitor_queue(exchange_name=item.exchange_name, queue_info=item.queue_monitor_queue)
+    rabbit_manager = RabbitManager(rabbit_config=RabbitConfig())
 
+    Rabbit_MQ = mqSettings.RabbitMq
+    for item in Rabbit_MQ:
+        rabbit_manager.start_monitoring(exchange_name=Rabbit_MQ[item].exchange_name,queue_name=Rabbit_MQ[item].queue_start_monitoring,
+                                        not_control=Rabbit_MQ[item].not_control)
 
 
 

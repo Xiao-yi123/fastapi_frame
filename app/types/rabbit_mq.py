@@ -1,5 +1,5 @@
 """
-@Package   
+@Package
 @File      rabbit_mq.py
 @Version   V1.0
 @Author    一云 <yi_yun200301@163.com>
@@ -9,110 +9,63 @@ Copyright (c) 2024 一云天网络科技
 All rights reserved.
 """
 from enum import Enum
-from typing import List, Dict, Union
-from dataclasses import dataclass
-from pydantic import Field
-
-
-class RabbitMqMonitorType(Enum):
-    COUNT = "count"
-    TIME = "time"
-
-
-class RabbitMqConfigType(Enum):
-    START = "start_monitoring"
-    MONITOR = "monitor_queue"
+from typing import List, Dict, Union, Optional
+from dataclasses import dataclass, field
+from pydantic import Field, field_validator, BaseModel, model_validator
 
 
 
 
-@dataclass
-class RabbitMqStartMonitoring:
-    title: Union[str] = Field(
-        default="",
-        description="监控任务的标题"
-    )  # 监控任务的标题
 
-    queue_name: Union[str] = Field(
-        default="",
-        description="要监控的队列的名称"
-    )  # 要监控的队列的名称
-
-    queue_fun: Union[str] = Field(
-        default="",
-        description="与队列相关的函数名称"
-    )  # 与队列相关的函数名称
-
-    max_consumer: Union[int] = Field(
-        default=0,
-        description="队列的最大消费者数量"
-    )  # 队列的最大消费者数量
-
-
-@dataclass
-class RabbitMqMonitorRabbitMq:
-    type: Union[RabbitMqMonitorType] = Field(
-        default=RabbitMqMonitorType.COUNT,
-        description="指定队列监控的类型，默认为 COUNT，表示按消息数量监控；可选值包括 COUNT（按消息数量）和 TIME（按时间间隔）"
-    )  # 指定队列监控的类型，默认为 COUNT，表示按消息数量监控；可选值包括 COUNT（按消息数量）和 TIME（按时间间隔）
-
-    title: Union[str] = Field(
-        default="",
-        description="队列监控的标题"
-    )  # 队列监控的标题
-
-    queue_name: Union[str] = Field(
-        default="",
-        description="队列的名称"
-    )  # 队列的名称
-
-    queue_fun: Union[str] = Field(
-        default="",
-        description="与队列相关的函数名称"
-    )  # 与队列相关的函数名称
-
-    forward_queue_name: str = Field(
-        default="",
-        description="转发队列的名称"
-    )  # 转发队列的名称
-
-    max_consumer: Union[int] = Field(
-        default=0,
-        description="队列的最大消费者数量"
-    )  # 队列的最大消费者数量
-
-    time_sleep: Union[int] = Field(
-        default=0,
-        description="处理队列时的时间间隔，单位为秒"
+# @dataclass
+class RabbitMqStartMonitoring(BaseModel):
+    """
+    启动监控任务的数据模型。
+    """
+    title: str = Field(description="监控任务的标题")
+    queue_name: str = Field(description="要监控的队列的名称")
+    queue_fun: str = Field(default="", description="与队列相关的函数名称")
+    max_consumer: int = Field(default=0,ge=0, description="队列的最大消费者数量")
+    is_create_task: bool = Field(
+        default=True,
+        description="是否创建任务"
     )
 
+    @model_validator(mode='after')
+    def validate_queue_fun_required(self) -> 'RabbitMqStartMonitoring':
+        # 当 max_consumer 大于 0 且 is_create_task 为 True 时，queue_fun 不能为空
+        if self.max_consumer > 0 and self.is_create_task and not self.queue_fun.strip():
+            raise ValueError('当 max_consumer > 0 且 is_create_task 为 True 时，queue_fun 不能为空')
+        return self
+    @model_validator(mode='after')
+    def validate_is_create_task(self) -> 'RabbitMqStartMonitoring':
+        if self.is_create_task and self.max_consumer == 0:
+            self.is_create_task =  False
+        return self
+
+    class Config:
+        validate_assignment = True
 
 @dataclass
 class RabbitMqConfig:
-    type: Union[List[RabbitMqConfigType], None] = Field(
-        default=None,
-        description="队列配置的类型列表，可选值包括 START_MONITORING 和 MONITOR_QUEUE"
-    )  # ["start_monitoring", "monitor_queue"]
-
-    exchange_name: Union[str, None] = Field(
+    """
+    队列整体配置的数据模型。
+    """
+    exchange_name: Optional[str] = Field(
         default=None,
         description="交换机的名称"
-    )  # 交换机的名称
-
-    queue_start_monitoring: Union[Dict[str, RabbitMqStartMonitoring], None] = Field(
+    )
+    queue_start_monitoring: Optional[Dict[str, RabbitMqStartMonitoring]] = Field(
         default=None,
         description="启动监控的队列配置字典"
-    )  # 启动监控的队列配置字典
-
-    not_control: Union[List[str], None] = Field(
+    )
+    not_control: Optional[List[str]] = Field(
         default=None,
         description="不需要控制的队列名称列表"
-    )  # 不需要控制的队列名称列表
-
-    queue_monitor_queue: Union[List[RabbitMqMonitorRabbitMq], None] = Field(
-        default=None,
-        description="监控队列的配置列表"
-    )  # 监控队列的配置列表
+    )
 
 
-__all__ = ["RabbitMqMonitorType", "RabbitMqConfigType", "RabbitMqStartMonitoring", "RabbitMqMonitorRabbitMq", "RabbitMqConfig"]
+__all__ = [
+    "RabbitMqStartMonitoring",
+    "RabbitMqConfig"
+]

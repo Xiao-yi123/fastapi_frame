@@ -16,6 +16,9 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 from dotenv import load_dotenv
 
+from app.types import RabbitMqConfig, RabbitMqStartMonitoring
+
+
 class AppConfigSettings(BaseSettings):
     """应用配置
     
@@ -149,7 +152,6 @@ class MQConfigSettings(BaseSettings):
     pool_max_overflow: int = 10
     blocked_connection_timeout:[int, None] = 10 # 设置阻塞连接超时时间
 
-    # noinspection PyDataclass
     RabbitMq: dict = {
         # "队列的 key": {
         #     "type": [],队列监控的类型  "start_monitoring","monitor_queue"
@@ -174,6 +176,18 @@ class MQConfigSettings(BaseSettings):
         #
         #             ]
         # },
+        "account_pool": RabbitMqConfig(
+            exchange_name="baiwan.pool",
+            not_control=[],
+            queue_start_monitoring={
+                "spider_account_pool": RabbitMqStartMonitoring(
+                    title="爬虫所用帐号池-不需要监控",
+                    queue_name="spider_account_pool",
+                    max_consumer=0,
+                    is_create_task=False,
+                )
+            },
+        ),
     }
     class Config:
         env_prefix = "RABBITMQ_"
