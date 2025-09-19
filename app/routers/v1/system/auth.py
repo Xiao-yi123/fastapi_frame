@@ -17,8 +17,8 @@ from app.utils import jwtGenerator, jwtParse
 from app.types.request import LoginParam
 from app.database import UserRoleEnum,UserCRUD
 
-router_auth = APIRouter(prefix=f'/auth', tags=['权限认证'])
-@router_auth.post('/login', summary='用户登录')
+router = APIRouter(prefix=f'/auth', tags=['权限认证'])
+@router.post('/login', summary='用户登录')
 async def loginRouteFunc(login_pm: LoginParam):
     """
     用户登录接口
@@ -65,7 +65,7 @@ async def loginRouteFunc(login_pm: LoginParam):
     })
 
 
-@router_auth.get('/getUserInfo', summary='获取用户信息', description='''
+@router.get('/getUserInfo', summary='获取用户信息', description='''
 定义一个名为DGetUserInfo的异步函数，用于获取用户信息
 该函数依赖于AuthDepend.is_authed来确保用户已认证
 ''')
@@ -96,5 +96,3 @@ async def getUserInfoRouteFunc(auth_user_data=Depends(AuthDepend.is_authed_sql))
     # 返回成功响应，包含用户数据
     return ResponseSuccess(msg="请求成功", data=data)
 
-
-__all__ = ['router_auth']

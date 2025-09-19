@@ -18,7 +18,7 @@ from config.dependency import AuthDepend
 
 from config.settings import appSettings
 
-router_route = APIRouter(prefix=f'/route', tags=['路由管理'], dependencies=[Depends(AuthDepend.is_authed)])
+router = APIRouter(prefix=f'/route', tags=['路由管理'], dependencies=[Depends(AuthDepend.is_authed)])
 
 
 def filter_children_by_role(item, role_to_check='R_USER'):
@@ -53,7 +53,7 @@ def filter_children_by_role(item, role_to_check='R_USER'):
     return item
 
 
-@router_route.get('/getConstantRoutes', summary='获取路由列表')
+@router.get('/getConstantRoutes', summary='获取路由列表')
 async def getConstantRouteFunc():
     file_path = appSettings.public_dir['STATIC_MANAGE'] + '/ConstantRoutes.json'
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -63,7 +63,7 @@ async def getConstantRouteFunc():
     return ResponseSuccess(data=data)
 
 
-@router_route.get('/getUserRoutes', summary='获取用户路由列表')
+@router.get('/getUserRoutes', summary='获取用户路由列表')
 async def getUserRouteFunc(auth_user_data=Depends(AuthDepend.is_authed_sql)):
     """
     获取用户路由列表的接口。
@@ -103,5 +103,5 @@ async def getUserRouteFunc(auth_user_data=Depends(AuthDepend.is_authed_sql)):
 
 
 __all__ = [
-    "router_route"
+    "router"
 ]

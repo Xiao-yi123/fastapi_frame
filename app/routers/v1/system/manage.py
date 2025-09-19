@@ -16,11 +16,11 @@ from config.dependency import AuthDepend
 from app.utils import generate_unid1_token, hashlib_sha256, get_public_ip
 from app.types.request import ResetPasswordParam, ManageUserCreateParam, BatchDeleteParam
 
-router_manage = APIRouter(prefix=f'/systemManage', tags=['系统管理'], dependencies=[Depends(AuthDepend.is_authed)])
+router = APIRouter(prefix=f'/systemManage', tags=['系统管理'], dependencies=[Depends(AuthDepend.is_authed)])
 
 user_curd = UserCRUD()
 
-@router_manage.get('/getCompleteUserInfo', summary='获取完整的用户信息')
+@router.get('/getCompleteUserInfo', summary='获取完整的用户信息')
 async def getCompleteUserInfoRouteFunc(auth_user_data=Depends(AuthDepend.is_authed_sql)):
     """
     获取完整的用户信息
@@ -41,7 +41,7 @@ async def getCompleteUserInfoRouteFunc(auth_user_data=Depends(AuthDepend.is_auth
     return ResponseSuccess(msg="请求成功", data=data[0])
 
 
-@router_manage.post("/createUser", summary="创建用户")
+@router.post("/createUser", summary="创建用户")
 async def createUserRouteFunc(param: ManageUserCreateParam, auth_user_info=Depends(AuthDepend.is_authed_sql)):
     """
     创建用户
@@ -77,7 +77,7 @@ async def createUserRouteFunc(param: ManageUserCreateParam, auth_user_info=Depen
     return ResponseSuccess(msg="请求成功", data=result_json[0])
 
 
-@router_manage.post("/editUser/{user_id}", summary="更新用户")
+@router.post("/editUser/{user_id}", summary="更新用户")
 async def editUserRouteFunc(user_id: int, param: ManageUserCreateParam, auth_user_info=Depends(AuthDepend.is_authed_sql)):
     """
     更新用户信息的接口方法。
@@ -104,7 +104,7 @@ async def editUserRouteFunc(user_id: int, param: ManageUserCreateParam, auth_use
         ResponseFail(msg="编辑失败")
 
 
-@router_manage.delete("/deleteUser/{user_id}", summary="删除用户")
+@router.delete("/deleteUser/{user_id}", summary="删除用户")
 async def deleteUserRouteFunc(user_id: int, auth_user_info=Depends(AuthDepend.is_authed_sql)):
     # 验证当前用户的角色是否有权进行删除操作
     await user_curd.verify_role_operation(auth_user_info.role, "DeleteUser")
@@ -118,7 +118,7 @@ async def deleteUserRouteFunc(user_id: int, auth_user_info=Depends(AuthDepend.is
         ResponseFail(msg="删除失败")
 
 
-@router_manage.delete('/delete/batch', summary='批量删除')
+@router.delete('/delete/batch', summary='批量删除')
 async def batchDeleteRouteFunc(ids: BatchDeleteParam, auth_user_info=Depends(AuthDepend.is_authed_sql)):
     # 从待删除列表中移除当前操作用户ID，确保不会删除自己的账号
     ids = [i for i in ids.ids if i != auth_user_info.id]
@@ -139,7 +139,7 @@ async def batchDeleteRouteFunc(ids: BatchDeleteParam, auth_user_info=Depends(Aut
         ResponseFail(msg="删除失败")
 
 
-@router_manage.put('/resetPassword', summary="重置密码")
+@router.put('/resetPassword', summary="重置密码")
 async def resetPasswordRouteFunc(param: ResetPasswordParam, auth_user_info=Depends(AuthDepend.is_authed_sql)):
     # 如果有指定的用户ID，进行旧密码验证
     if not param.id:
@@ -175,5 +175,5 @@ async def resetPasswordRouteFunc(param: ResetPasswordParam, auth_user_info=Depen
 
 
 __all__ = [
-    "router_manage"
+    "router"
 ]

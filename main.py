@@ -3,13 +3,14 @@ import sys
 from fastapi import FastAPI
 import uvicorn
 
-from app.routers import BaseRouter
+from app.routers import registerRouter
 from config.exceptions import registerCustomErrorHandle
 from config.middleware import make_middlewares
+
 from config.rabbitmq import RabbitManager, RabbitConfig
 from config.settings import appSettings, mqSettings
-sys.dont_write_bytecode  =True
 
+sys.dont_write_bytecode  =True
 def create_app() -> FastAPI:
     # 设置事件循环策略
     app = FastAPI(
@@ -22,8 +23,7 @@ def create_app() -> FastAPI:
         openapi_url=appSettings.openapi_url,
         middleware=make_middlewares(),
     )
-    baseRouter = BaseRouter(app)
-    baseRouter.registerRouter()
+    registerRouter(app)
     registerCustomErrorHandle(app)
     # 在启动FastAPI应用时初始化数据库
 
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
 
 # 在后台线程启动消费者
 if appSettings.start_mq:

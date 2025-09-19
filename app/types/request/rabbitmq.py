@@ -13,11 +13,6 @@ from typing import List, Dict, Union, Optional
 from dataclasses import dataclass, field
 from pydantic import Field, field_validator, BaseModel, model_validator
 
-
-
-
-
-# @dataclass
 class RabbitMqStartMonitoring(BaseModel):
     """
     启动监控任务的数据模型。
