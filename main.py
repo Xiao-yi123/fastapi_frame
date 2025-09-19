@@ -6,13 +6,10 @@ import uvicorn
 from app.routers import BaseRouter
 from config.exceptions import registerCustomErrorHandle
 from config.middleware import make_middlewares
-from config.rabbitmq import rabbit_config,RabbitManager
-
-rabbit_manager = RabbitManager(rabbit_config=rabbit_config)
-
+from config.rabbitmq import RabbitManager, RabbitConfig
 from config.settings import appSettings, mqSettings
-
 sys.dont_write_bytecode  =True
+
 def create_app() -> FastAPI:
     # 设置事件循环策略
     app = FastAPI(
@@ -37,13 +34,12 @@ app = create_app()
 
 # 在后台线程启动消费者
 if appSettings.start_mq:
+    rabbit_manager = RabbitManager(rabbit_config=RabbitConfig())
+
     Rabbit_MQ = mqSettings.RabbitMq
     for item in Rabbit_MQ:
-        if "start_monitoring" in Rabbit_MQ[item]['type']:
-            rabbit_manager.start_monitoring(exchange_name=Rabbit_MQ[item]['exchange_name'],queue_name=Rabbit_MQ[item]['queue_start_monitoring'],
-                                            not_control=Rabbit_MQ[item].get("not_control"))
-        if "monitor_queue" in Rabbit_MQ[item]['type']:
-            rabbit_manager.monitor_queue(exchange_name=Rabbit_MQ[item]['exchange_name'], queue_info=Rabbit_MQ[item].get("queue_monitor_queue"))
+        rabbit_manager.start_monitoring(exchange_name=Rabbit_MQ[item].exchange_name,queue_name=Rabbit_MQ[item].queue_start_monitoring,
+                                        not_control=Rabbit_MQ[item].not_control)
 
 
 

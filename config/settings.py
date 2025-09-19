@@ -9,12 +9,13 @@ Copyright (c) 2024 一云天网络科技
 All rights reserved.
 """
 import os
-import random
 from typing import Union
 
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from dotenv import load_dotenv
+
+from app.types.request import RabbitMqConfig, RabbitMqStartMonitoring
 
 
 class AppConfigSettings(BaseSettings):
@@ -108,6 +109,18 @@ class MQConfigSettings(BaseSettings):
         #
         #             ]
         # },
+        "account_pool": RabbitMqConfig(
+            exchange_name="baiwan.pool",
+            not_control=[],
+            queue_start_monitoring={
+                "spider_account_pool": RabbitMqStartMonitoring(
+                    title="爬虫所用帐号池-不需要监控",
+                    queue_name="spider_account_pool",
+                    max_consumer=0,
+                    is_create_task=False,
+                )
+            },
+        ),
     }
     class Config:
         env_prefix = "RABBITMQ_"

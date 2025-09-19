@@ -1,69 +1,312 @@
 import asyncio
 import contextlib
 import json
-import random
+
 import threading
 import time
 import pika
 import requests
+from typing import Optional, Any, Union, Generator
 
 from app.logs import rabbitmq_logger
 from config.settings import mqSettings
 
-# 不能删
-from app.controllers import *
+class RabbitConfig:
+    def __init__(self, rabbit_config: dict = mqSettings.RabbitMq):
+        """
+        初始化 RabbitMQ 配置
 
+        :param rabbit_config: RabbitMQ 配置字典，如果为 None 则使用默认设置
+        """
+        self.rabbit_config = rabbit_config
+        self.current_key = None
+
+    def config_to_dict(self, **overrides) -> dict:
+        """
+        将配置转换为字典，支持覆盖默认值
+
+        :param overrides: 要覆盖的配置项
+        :return: 包含所有配置的字典
+        """
+        base_config = {
+            "host": mqSettings.host,
+            "port": mqSettings.port,
+            "user": mqSettings.user,
+            "password": mqSettings.password,
+            "api_port": mqSettings.api_port,
+            "virtual_host": mqSettings.virtual_host,
+            "connection_attempts": mqSettings.connection_attempts,
+            "retry_delay": mqSettings.retry_delay,
+            "socket_timeout": mqSettings.socket_timeout,
+            "max_rebbitmq_prefetch_count": mqSettings.prefetch_count,
+            "max_consumer": mqSettings.max_consumer,
+            "heartbeat": mqSettings.heartbeat,
+            "blocked_connection_timeout": mqSettings.blocked_connection_timeout,
+            "rabbitmq_pool_max_overflow": mqSettings.pool_max_overflow
+        }
+
+        # 应用覆盖值
+        base_config.update(overrides)
+        return base_config
+
+    def use_key(self, key: str) -> 'RabbitConfig':
+        """
+        设置要使用的配置键
+
+        :param key: 配置键名
+        :return: self (支持链式调用)
+        """
+        self.current_key = self.rabbit_config.get(key)
+        return self
+
+    def get_config(self) -> dict:
+        """
+        获取当前配置键的完整配置
+
+        :return: 配置字典
+        """
+        if not self.current_key:
+            raise ValueError("No key selected. Use use_key() first.")
+        return self.current_key.__dict__ if hasattr(self.current_key, '__dict__') else self.current_key
+
+    def get_exchange_name(self) -> str:
+        """
+        获取交换机名称
+
+        :return: 交换机名称
+        """
+        config = self.get_config()
+        return config.get('exchange_name')
+
+    def get_not_control_queues(self) -> list:
+        """
+        获取不监控的队列列表
+
+        :return: 不监控的队列名称列表
+        """
+        config = self.get_config()
+        return config.get('not_control', [])
+
+    def get_start_monitoring_queues(self, queue_name: str = None) -> Union[dict, list]:
+        """
+        获取启动监控的队列配置
+
+        :param queue_name: 可选，指定队列名称
+        :return: 队列配置字典或列表
+        """
+        config = self.get_config()
+        queues = config.get('queue_start_monitoring', {})
+
+        if queue_name:
+            queue_obj = queues.get(queue_name)
+            return queue_obj.__dict__ if queue_obj and hasattr(queue_obj, '__dict__') else queue_obj
+        return {name: q.__dict__ if hasattr(q, '__dict__') else q for name, q in queues.items()}
+
+    def get_monitor_queues(self, queue_name: str = None) -> Union[dict, list]:
+        """
+        获取监控队列配置
+
+        :param queue_name: 可选，指定队列名称
+        :return: 队列配置字典或列表
+        """
+        config = self.get_config()
+        queues = config.get('queue_monitor_queue', [])
+
+        if queue_name:
+            for queue in queues:
+                q_dict = queue.__dict__ if hasattr(queue, '__dict__') else queue
+                if q_dict.get('queue_name') == queue_name:
+                    return q_dict
+            return None
+
+        return [q.__dict__ if hasattr(q, '__dict__') else q for q in queues]
+
+    def get_config_types(self) -> list:
+        """
+        获取配置类型列表
+
+        :return: 配置类型列表
+        """
+        config = self.get_config()
+        return config.get('type', [])
+
+    def has_config_type(self, config_type: str) -> bool:
+        """
+        检查是否包含指定的配置类型
+
+        :param config_type: 配置类型
+        :return: 是否包含
+        """
+        return config_type in self.get_config_types()
+
+    def is_start_monitoring_enabled(self) -> bool:
+        """
+        检查是否启用了启动监控
+
+        :return: 是否启用
+        """
+        return self.has_config_type('start_monitoring')
+
+    def is_monitor_queue_enabled(self) -> bool:
+        """
+        检查是否启用了队列监控
+
+        :return: 是否启用
+        """
+        return self.has_config_type('monitor_queue')
+
+    def get_all_queue_names(self, include_not_control: bool = False) -> list:
+        """
+        获取所有队列名称
+
+        :param include_not_control: 是否包含不监控的队列
+        :return: 队列名称列表
+        """
+        queue_names = []
+
+        # 获取启动监控的队列
+        start_queues = self.get_start_monitoring_queues()
+        if isinstance(start_queues, dict):
+            queue_names.extend(start_queues.keys())
+
+        # 获取监控队列
+        monitor_queues = self.get_monitor_queues()
+        if isinstance(monitor_queues, list):
+            for queue in monitor_queues:
+                if isinstance(queue, dict) and 'queue_name' in queue:
+                    queue_names.append(queue['queue_name'])
+
+        # 过滤不监控的队列
+        if not include_not_control:
+            not_control = self.get_not_control_queues()
+            queue_names = [name for name in queue_names if name not in not_control]
+
+        return list(set(queue_names))  # 去重
+
+    def get_is_create_task_by_exchange_and_queue(self, exchange_name: str, queue_name: str) -> bool:
+        """
+        通过交换机名和队列名获取是否需要创建key（无需知道key）
+
+        :param exchange_name: 交换机名称
+        :param queue_name: 队列名称
+        :return:
+        """
+        for key, config_value in self.rabbit_config.items():
+            # 将配置对象转换为字典
+            config_dict = config_value.__dict__ if hasattr(config_value, '__dict__') else config_value
+
+            # 检查交换机名称是否匹配
+            if config_dict.get('exchange_name') == exchange_name:
+                # 检查启动监控队列
+                start_queues = config_dict.get('queue_start_monitoring', {})
+                for q_key, q_value in start_queues.items():
+                    q_dict = q_value.__dict__ if hasattr(q_value, '__dict__') else q_value
+                    if q_dict.get('queue_name') == queue_name:
+                        return True
+
+                # 检查监控队列
+                monitor_queues = config_dict.get('queue_monitor_queue', [])
+                for queue in monitor_queues:
+                    q_dict = queue.__dict__ if hasattr(queue, '__dict__') else queue
+                    if q_dict.get('queue_name') == queue_name:
+                        return True
+
+        return False
 
 class RabbitManager:
-    def __init__(self, rabbit_config):
+    def __init__(self, rabbit_config: RabbitConfig):
+        self._create_key_dict = dict() # 创建key的dict 在run_def 内使用
+        self._build_create_key_dict(rabbit_config.rabbit_config)
+        # 配置初始化
+        self._config = rabbit_config.config_to_dict()
+        self._rabbitmq_host = self._config.get('host', "127.0.0.1")
+        self._rabbitmq_port = self._config.get('port', 5672)
+        self._rabbitmq_user = self._config.get('user')
+        self._rabbitmq_password = self._config.get('password')
+        self._rabbitmq_api_port = self._config.get('api_port', 15672)
+        self._virtual_host = self._config.get('virtual_host', "/")
+        self._max_rebbitmq_prefetch_count = self._config.get('max_rebbitmq_prefetch_count', 3)
+        self._max_consumer = self._config.get("max_consumer", 5)
 
-        self._rabbitmq_host = rabbit_config.get('host', "127.0.0.1")
-        self._rabbitmq_port = rabbit_config.get('port', 5672)
-        self._rabbitmq_user = rabbit_config.get('user', None)
-        self._rabbitmq_password = rabbit_config.get('password', None)
-        self._rabbitmq_api_port = rabbit_config.get('api_port', 15672)
-        self._virtual_host = rabbit_config.get('virtual_host', "/")  # 指定虚拟主机
-        self._max_rebbitmq_prefetch_count = rabbit_config.get('max_rebbitmq_prefetch_count', 3)
-        # 构造RabbitMQ API的URL
+        # 连接参数
+        self._heartbeat = self._parse_int(self._config.get("heartbeat"))
+        self._blocked_connection_timeout = self._parse_int(self._config.get('blocked_connection_timeout'))
+        self.connection_attempts = self._config.get('connection_attempts', 10)
+        self.retry_delay = self._config.get('retry_delay', 5)
+        self.socket_timeout = self._config.get('socket_timeout', 10)
+
+        # API 配置
         self._rabbitmq_api_url = f"http://{self._rabbitmq_host}:{self._rabbitmq_api_port}/api/"
-        # 使用RabbitMQ的认证信息
-        self._auth = (self._rabbitmq_user, self._rabbitmq_password)
-        # RabbitMQ 同时启动多少个消费者
-        self._max_consumer = rabbit_config.get("max_consumer", 5)
-        self._heartbeat = rabbit_config.get("heartbeat")  # 在连接参数中设置心跳间隔，防止因长时间无活动导致的连接超时。
-        self._heartbeat = int(self._heartbeat) if self._heartbeat else None
-        # 收到的正文
-        self.received_body = None
-        self._blocked_connection_timeout = rabbit_config.get('blocked_connection_timeout', None) # 设置阻塞连接超时时间
-        self.connection_attempts = rabbit_config.get('connection_attempts', 10)  # 尝试连接的最大次数
-        self.retry_delay = rabbit_config.get('retry_delay', 5)  # 每次重试之间的延迟时间（秒）
-        self.socket_timeout = rabbit_config.get('socket_timeout', 10)  # 套接字超时时间（秒）
+        self._auth = (self._rabbitmq_user,
+                      self._rabbitmq_password) if self._rabbitmq_user and self._rabbitmq_password else None
 
-        # 建立与RabbitMQ的连接并获取信道
+        # 状态变量
+        self.received_body = None
+        self._is_init_exchange_and_queue = False
+
+        # 连接
         self.connection, self.channel = self.connect_to_rabbitmq()
+    def _build_create_key_dict(self, rabbit_config):
+        for key, config_value in rabbit_config.items():
+            exchange_name = config_value.exchange_name
+            # 检查启动监控队列
+            for q_key, q_value in config_value.queue_start_monitoring.items():
+                if q_value.is_create_task:
+                    self._create_key_dict[f"{exchange_name}_{q_value.queue_name}"] = q_value
+                    print(q_value)
+                    print(q_value.queue_fun)
+    def _parse_int(self, value) -> Optional[int]:
+        """安全解析整数值"""
+        try:
+            return int(value) if value is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    def _init_exchange_and_queue(self, exchange_name: str, queue_name: str):
+        """初始化交换机和队列"""
+        try:
+            self.channel.exchange_declare(
+                exchange=exchange_name,
+                exchange_type='direct',
+                durable=True
+            )
+            self.channel.queue_declare(queue=queue_name, durable=True)
+            self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
+            self.channel.basic_qos(prefetch_count=self._max_rebbitmq_prefetch_count)
+            self._is_init_exchange_and_queue = True
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to initialize exchange and queue: {e}")
+            raise
 
     def close(self):
-        if self.channel:
-            self.channel.close()
-        if self.connection:
-            self.connection.close()
+        """安全关闭连接"""
+        try:
+            if hasattr(self, 'channel') and self.channel and self.channel.is_open:
+                self.channel.close()
+        except Exception as e:
+            rabbitmq_logger.debug(f"Error closing channel: {e}")
+
+        try:
+            if hasattr(self, 'connection') and self.connection and self.connection.is_open:
+                self.connection.close()
+        except Exception as e:
+            rabbitmq_logger.debug(f"Error closing connection: {e}")
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.channel.close()
-        self.connection.close()
+        self.close()
 
-    def create_task(self, function_name, *args, **kwargs):
-        # 创建任务
+    def create_task(self, function_name: str, *args, **kwargs) -> dict:
+        """创建任务字典"""
         return {
             "function_name": function_name,
             "args": args,
-            **kwargs
+            "kwargs": kwargs
         }
 
-    def connect_to_rabbitmq(self, max_retries=5, retry_delay=5):
+    def connect_to_rabbitmq(self, max_retries: int = 5, retry_delay: int = 5):
         """
         连接到RabbitMQ服务器。
 
@@ -78,32 +321,34 @@ class RabbitManager:
         异常:
         - RuntimeError: 在多次重试后未能连接到RabbitMQ。
         """
-        # 连接到RabbitMQ
         rabbitmq_params = pika.ConnectionParameters(
-            host=self._rabbitmq_host,  # 远程RabbitMQ服务器的IP地址
-            port=self._rabbitmq_port,  # 默认端口
-            virtual_host=self._virtual_host,  # 指定虚拟主机
-            credentials=pika.PlainCredentials(self._rabbitmq_user, self._rabbitmq_password),  # 用户名和密码
+            host=self._rabbitmq_host,
+            port=self._rabbitmq_port,
+            virtual_host=self._virtual_host,
+            credentials=pika.PlainCredentials(self._rabbitmq_user, self._rabbitmq_password),
             connection_attempts=self.connection_attempts,
             retry_delay=self.retry_delay,
             socket_timeout=self.socket_timeout,
             heartbeat=self._heartbeat,
             blocked_connection_timeout=self._blocked_connection_timeout
         )
-        """重试连接RabbitMQ"""
-        for _ in range(max_retries):
+
+        for attempt in range(max_retries):
             try:
                 connection = pika.BlockingConnection(rabbitmq_params)
                 channel = connection.channel()
+                rabbitmq_logger.info(f"Successfully connected to RabbitMQ (attempt {attempt + 1})")
                 return connection, channel
             except pika.exceptions.AMQPConnectionError as e:
-                rabbitmq_logger.error(f"Failed to connect to RabbitMQ, retrying in {retry_delay} seconds...")
-                rabbitmq_logger.error(f"error: {e}")
+                rabbitmq_logger.warning(
+                    f"Failed to connect to RabbitMQ (attempt {attempt + 1}/{max_retries}), "
+                    f"retrying in {retry_delay} seconds: {e}"
+                )
                 time.sleep(retry_delay)
 
-        raise RuntimeError("Failed to connect to RabbitMQ after multiple retries.")
+        raise RuntimeError(f"Failed to connect to RabbitMQ after {max_retries} attempts")
 
-    def send_task(self, task, exchange_name='', queue_name=''):
+    def send_task(self, task: dict, exchange_name: str = '', queue_name: str = ''):
         """
         发送任务到指定的交换机和队列。
 
@@ -118,30 +363,29 @@ class RabbitManager:
         返回值:
         无返回值，但会记录发送任务的日志信息。
         """
-        # 建立与RabbitMQ的连接并获取信道
-        # connection, channel = self.connect_to_rabbitmq()
-        # 声明交换机，使用direct类型
-        self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+        try:
+            # 声明交换机和队列
+            self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+            self.channel.queue_declare(queue=queue_name, durable=True)
+            self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
 
-        # 声明队列，并设置为持久化队列
-        self.channel.queue_declare(queue=queue_name, durable=True)
+            # 发送消息
+            self.channel.basic_publish(
+                exchange=exchange_name,
+                routing_key=queue_name,
+                body=json.dumps(task),
+                properties=pika.BasicProperties(delivery_mode=2)
+            )
 
-        # 将队列绑定到交换机
-        self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
+            if isinstance(task, dict) and task.get("function_name"):
+                rabbitmq_logger.debug(
+                    f"Sent task: exchange={exchange_name}, queue={queue_name}, "
+                    f"function={task.get('function_name')}"
+                )
 
-        # 发送消息到交换机
-        self.channel.basic_publish(
-            exchange=exchange_name,
-            routing_key=queue_name,
-            body=json.dumps(task),
-            properties=pika.BasicProperties(delivery_mode=2)  # 使消息持久化
-        )
-        # 记录发送任务的日志信息
-        if isinstance(task, dict) and task.get("function_name"):
-            rabbitmq_logger.debug(
-                f" [x] Sent exchange_name={exchange_name},queue={queue_name},function_name={task.get("function_name")}")
-            # # 关闭RabbitMQ连接
-            # self.channel.close()
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to send task: {e}")
+            raise
 
     def process_task(self, ch, method, properties, body):
         """
@@ -159,30 +403,33 @@ class RabbitManager:
         返回值:
         None
         """
-        # 解析任务JSON数据
-        task = json.loads(body)
-        self.received_body = task
-        # 确认处理完消息，向队列发送确认信号
-        # ch.basic_ack(delivery_tag=method.delivery_tag)
-        # 记录接收到的任务信息
-        if isinstance(task, dict) and task.get("function_name"):
-            rabbitmq_logger.debug(
-                f" [x] Received exchange={method.exchange}, queue={method.routing_key},function_nema={task.get("function_name")}")
         try:
-            self.run_def(task, ch)
-        except pika.exceptions.StreamLostError as e:
-            rabbitmq_logger.error(f"ChannelWrongStateError: {e},boby:{body}")
-        except requests.exceptions.ConnectionError as e:
-            rabbitmq_logger.error(f"Connection error: {e}, body:{body}")
+            task = json.loads(body)
+            self.received_body = task
+            # 创建任务字典
+            dict_key = f"{method.exchange}_{method.routing_key}"
+            if dict_key in self._create_key_dict.keys():
+                task = self.create_task(function_name=self._create_key_dict[dict_key].queue_fun,args=task.get("args"),kwargs=task)
 
+            # 验证任务字典
+            if isinstance(task, dict) and task.get("function_name"):
+                rabbitmq_logger.debug(
+                    f"Received task: exchange={method.exchange}, "
+                    f"queue={method.routing_key}, function={task.get('function_name')}"
+                )
+            # 运行任务
+            self._run_def(task, ch)
+
+        except json.JSONDecodeError as e:
+            rabbitmq_logger.error(f"Failed to parse task JSON: {e}, body: {body}")
+            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
         except Exception as e:
-            # 如果发生异常，则记录错误信息
-            rabbitmq_logger.error(f"Error processing task: {type(e).__name__} - {e},boby:{body}")
-        finally:
-            # 确认处理完消息，向队列发送确认信号
+            rabbitmq_logger.error(f"Error processing task: {type(e).__name__} - {e}, body: {body}")
+            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True)
+        else:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    def run_def(self, task, ch=None):
+    def _run_def(self, task: dict, ch=None):
         """
         执行定义的函数。
 
@@ -192,51 +439,38 @@ class RabbitManager:
         参数:
         - task: 包含函数名、位置参数和关键字参数的任务字典。
         - ch: 消息队列通道对象，用于停止消费操作。
+        - method: 方法框，包含方法的属性
 
         返回:
         无返回值。根据执行情况更新 self.received_body 或停止消费。
         """
         try:
-            # 尝试从任务对象中获取函数名、位置参数和关键字参数
-            function_name = task.get("function_name", None)
+            function_name = task.get("function_name")
             args = task.get("args", [])
             kwargs = task.get("kwargs", {})
-        except:
-            # 如果提取过程中出现异常，则重置函数名和参数
-            function_name = None
-            args = []
-            kwargs = {}
 
-        # 动态获取函数对象并执行
-        func = globals().get(function_name)
+            if function_name is None:
+                self.received_body = task
+                if ch:
+                    ch.stop_consuming()
+                return
 
-        # 检查是否指定了函数名称
-        if function_name is None:
-            # 如果没有指定函数名称，则直接返回原始的任务字典
-            self.received_body = task
-            if ch:
-                # 停止消费
-                ch.stop_consuming()
-        elif func:
-            # 如果找到了对应的函数
+            func = globals().get(function_name)
+            if not func:
+                rabbitmq_logger.error(f"Function '{function_name}' not found")
+                return
+
+            # 执行函数
             if asyncio.iscoroutinefunction(func):
-                # 如果函数是异步的，则创建新的事件循环并运行
-                # loop = asyncio.new_event_loop()
-                # asyncio.set_event_loop(loop)
-                # loop.run_until_complete(func(*args, **kwargs))
-                # loop.close()
-                # 如果函数是异步的，则在当前事件循环中运行
                 asyncio.run(func(*args, **kwargs))
             else:
-                # 如果函数是同步的，则直接调用
                 func(*args, **kwargs)
 
-            # 任务完成后记录信息
-        else:
-            # 如果找不到对应的函数则记录错误信息
-            rabbitmq_logger.debug(f"Function '{function_name}' not found")
+        except Exception as e:
+            rabbitmq_logger.error(f"Error executing function: {e}")
+            raise
 
-    def consume_tasks(self, exchange_name="", queue_name=''):
+    def consume_tasks(self, exchange_name: str = "", queue_name: str = ''):
         """
         消费RabbitMQ中的任务。
 
@@ -257,26 +491,19 @@ class RabbitManager:
         - 参数`exchange_name`和`queue_name`通常在创建队列或交换机时指定。
         - 这个函数假设RabbitMQ服务已经启动，并且可以通过`self.connect_to_rabbitmq()`方法进行连接。
         """
-        # self.connection, self.channel = self.connect_to_rabbitmq()
-        # 声明交换机，类型为direct
-        self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
+        try:
+            if not self._is_init_exchange_and_queue:
+                self._init_exchange_and_queue(exchange_name=exchange_name, queue_name=queue_name)
 
-        # 声明队列，使其持久化
-        self.channel.queue_declare(queue=queue_name, durable=True)
+            self.channel.basic_consume(queue=queue_name, on_message_callback=self.process_task)
+            self.channel.start_consuming()
 
-        # 将队列与交换机绑定
-        self.channel.queue_bind(exchange=exchange_name, queue=queue_name)
+        except Exception as e:
+            self._is_init_exchange_and_queue = False
+            rabbitmq_logger.error(f"Error while consuming tasks: {e}")
+            raise
 
-        # 设置每个消费者同时最多处理的消息数量
-        self.channel.basic_qos(prefetch_count=self._max_rebbitmq_prefetch_count)
-
-        # 开始消费队列中的消息
-        self.channel.basic_consume(queue=queue_name, on_message_callback=self.process_task)
-
-        # 开始监听并消费消息
-        self.channel.start_consuming()
-
-    def start_monitoring(self, exchange_name, queue_name=None, not_control=[]):
+    def start_monitoring(self, exchange_name: str, queue_name: dict = None, not_control: list = []):
         """
         开始监控指定的交换机下的队列。
 
@@ -292,79 +519,22 @@ class RabbitManager:
         返回:
             无
         """
-
-        from config.rabbitmq import rabbit_config as new_rabbit_config
-
         for queue in queue_name.values():
-            if queue.get("queue_name") in not_control:
+            if queue.queue_name in not_control:
                 continue
-            for n in range(queue.get("max_consumer", self._max_consumer)):
-                threading_name = f"{exchange_name}-{queue['queue_name']}-{n}"
-                rabbit = RabbitManager(new_rabbit_config)
-                consumer_thread = threading.Thread(target=rabbit.consume_tasks, name=threading_name, daemon=True,
-                                                   args=(exchange_name, queue.get("queue_name")))
+
+            for n in range(queue.max_consumer if queue.max_consumer else self._max_consumer):
+                threading_name = f"{exchange_name}-{queue.queue_name}-{n}"
+                consumer_thread = threading.Thread(
+                    target=self.consume_tasks,
+                    name=threading_name,
+                    daemon=True,
+                    args=(exchange_name, queue.queue_name)
+                )
                 consumer_thread.start()
 
-    def monitor_queue_of_monitor(self, exchange_name: str, queue_info: dict, rabbit):
-        """
-        监控单个消息队列。
-
-        此函数在一个无限循环中检查指定队列的状态，并在队列长度大于零时消费队列中的任务。
-
-        参数:
-        - exchange_name: str, 交换机名称。
-        - queue_name: str, 需要监控的队列名称。
-        - queue_fun: str, 当队列中有任务时需要执行的函数名称。
-        """
-        while True:
-            # 获取所有队列信息，检查指定的队列是否存在
-            rabbit.channel.exchange_declare(exchange=exchange_name, exchange_type='direct', durable=True)
-            result = rabbit.channel.queue_declare(queue=queue_info.get("queue_name"), durable=True)
-
-            if not result:
-                continue
-            # 根据队列的类型执行相应的逻辑
-            if queue_info.get("type") == "count":
-                # 检查队列长度，如果大于零，则消费任务
-                if result.method.message_count > 0:
-                    rabbit.consume_tasks(exchange_name, queue_info.get("queue_name"))
-                    # 创建并发送任务
-                    task = rabbit.create_task(queue_info.get("queue_fun"), kwargs=rabbit.received_body)
-                    rabbit.send_task(task, exchange_name=exchange_name, queue_name=queue_info.get("forward_queue_name"))
-                    continue
-            elif queue_info.get("type") == "time":
-                # 根据时间消费任务 执行函数 目前只能执行不带参数的函数
-                task = rabbit.create_task(queue_info.get("queue_fun"))
-                rabbit.run_def(task)
-            else:
-                break
-
-            # 如果队列为空，等待一秒钟后再次检查
-            time.sleep(queue_info.get("time_sleep"))
-
-    def monitor_queue(self, exchange_name: str, queue_info: list = None):
-        """
-        监控消息队列。
-
-        此函数用于监控一个或多个消息队列的状态，并在满足特定条件时消费队列中的任务。
-
-        参数:
-        - exchange_name: str, 交换机名称，用于路由消息。
-        - queue_info: list, 包含队列信息的列表，每个元素是一个字典，包含队列名称和处理函数。
-
-        此函数内部定义了一个名为 monitor 的辅助函数，用于具体监控和处理单个队列。
-        """
-        from config.rabbitmq import rabbit_config as new_rabbit_config
-        # 为每个队列信息启动一个线程来监控队列
-        for i in queue_info:
-            for n in range(i.get("max_consumer", self._max_consumer)):
-                rabbit = RabbitManager(new_rabbit_config)
-                threading_name = f"{exchange_name}-{i['queue_name']}-{n}"
-                consumer_thread = threading.Thread(target=self.monitor_queue_of_monitor, name=threading_name,
-                                                   daemon=True, args=(exchange_name, i, rabbit))
-                consumer_thread.start()
-
-    def clear_and_delete_queues(self, exchange_name, queue_name=None, is_delete_exchange=False,is_delete_queue=False):
+    def clear_and_delete_queues(self, exchange_name: str, queue_name: str = None,
+                                is_delete_exchange: bool = False, is_delete_queue: bool = False):
         """
         清空并删除指定交换机下的所有队列。
 
@@ -377,24 +547,22 @@ class RabbitManager:
         注意:
         - 此函数假定已经有一个有效的channel连接。
         """
-        # # 建立与RabbitMQ的连接并获取通道
-        # connection, channel = self.connect_to_rabbitmq()
-        # 获取交换机下的所有队列
         queue_names = [queue['routing_key'] for queue in self.get_exchange_bindings(exchange_name)]
+
         if queue_name:
             if queue_name in queue_names:
-                # 清空并根据is_delete参数决定是否删除指定队列
                 self.clear_queue(queue_name, is_delete=is_delete_queue)
         else:
-            for queue_name in queue_names:
-                # 对queue_names中的每一个队列执行清空操作，并根据is_delete参数决定是否删除队列
-                self.clear_queue(queue_name, is_delete=is_delete_queue)
+            for q_name in queue_names:
+                self.clear_queue(q_name, is_delete=is_delete_queue)
 
-        # 是否删除该交换机
         if is_delete_exchange:
-            self.channel.exchange_delete(exchange_name)
+            try:
+                self.channel.exchange_delete(exchange_name)
+            except Exception as e:
+                rabbitmq_logger.error(f"Failed to delete exchange {exchange_name}: {e}")
 
-    def clear_queue(self, queue_name, is_delete=False):
+    def clear_queue(self, queue_name: str, is_delete: bool = False):
         """
         清空指定的RabbitMQ队列。
 
@@ -405,21 +573,21 @@ class RabbitManager:
         注意:
         - 此函数假定已经有一个有效的channel连接。
         """
-        # # 建立与RabbitMQ的连接并获取通道
-        # connection, channel = self.connect_to_rabbitmq()
-        # 首先确认队列存在
-        self.channel.queue_declare(queue=queue_name, durable=True)
+        try:
+            self.channel.queue_declare(queue=queue_name, durable=True)
 
-        while True:
-            # 然后清空队列
-            method_frame, header_frame, body = self.channel.basic_get(queue=queue_name, auto_ack=True)
-            if method_frame is None:
-                break
-        if is_delete:
-            # 删除队列
-            self.channel.queue_delete(queue=queue_name)
+            while True:
+                method_frame, header_frame, body = self.channel.basic_get(queue=queue_name, auto_ack=True)
+                if method_frame is None:
+                    break
 
-    def get_exchange_bindings(self, exchange_name=None):
+            if is_delete:
+                self.channel.queue_delete(queue=queue_name)
+
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to clear queue {queue_name}: {e}")
+
+    def get_exchange_bindings(self, exchange_name: str = None) -> list:
         """
         获取所有绑定列表或者指定的绑定列表
 
@@ -429,25 +597,24 @@ class RabbitManager:
         返回:
         list: 绑定到指定交换机的队列列表。如果未找到任何队列或请求失败，则返回空列表。
         """
-        # 构造RabbitMQ API的URL
-        rabbitmq_api_url = f"{self._rabbitmq_api_url}bindings?source="
-        # 获取交换机下的所有队列
-        response = requests.request("GET", rabbitmq_api_url, auth=self._auth)
-        # response.raise_for_status()
-        if response.status_code == 200:
+        try:
+            url = f"{self._rabbitmq_api_url}bindings"
+            if exchange_name:
+                url += f"?source={exchange_name}"
+
+            response = requests.get(url, auth=self._auth, timeout=10)
+            response.raise_for_status()
+
             bindings = response.json()
             if exchange_name:
-                # 过滤出属于指定交换机的队列
-                return [binding for binding in bindings if binding["source"] == exchange_name]
-            else:
-                return bindings
-        else:
-            # 记录请求失败的错误日志
-            rabbitmq_logger.error(
-                f"Failed to fetch bindings for exchange {exchange_name}: {response.status_code} - {response.text}")
+                return [binding for binding in bindings if binding.get("source") == exchange_name]
+            return bindings
+
+        except requests.RequestException as e:
+            rabbitmq_logger.error(f"Failed to fetch bindings for exchange {exchange_name}: {e}")
             return []
 
-    def get_all_queues(self, queue_name=None):
+    def get_all_queues(self, queue_name: str = None) -> list:
         """
         获取RabbitMQ中所有的队列信息或者指定。
         result['backing_queue_status']['len'] == Ready
@@ -456,46 +623,46 @@ class RabbitManager:
         返回:
         - list: 包含所有队列名称的列表。
         """
-        url = f"{self._rabbitmq_api_url}queues"
         try:
-            response = requests.get(url, auth=self._auth)
-            response.raise_for_status()  # 检查请求是否成功
+            url = f"{self._rabbitmq_api_url}queues"
+            response = requests.get(url, auth=self._auth, timeout=10)
+            response.raise_for_status()
+
             queue_info = response.json()
             if queue_name:
                 return [q for q in queue_info if q['name'] == queue_name]
-            else:
-                return queue_info
+            return queue_info
 
         except requests.RequestException as e:
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying i")
-        return []
+            rabbitmq_logger.error(f"Failed to get queues: {e}")
+            return []
 
-    def get_all_exchanges(self, exchange_name=None,is_amq=False):
+    def get_all_exchanges(self, exchange_name: str = None, is_amq: bool = False) -> list:
         """
         获取RabbitMQ中所有的交换机名称。
 
         返回:
         - list: 包含所有队列名称的列表。
         """
-        url = f"{self._rabbitmq_api_url}exchanges"
         try:
-            response = requests.get(url, auth=self._auth)
-            response.raise_for_status()  # 检查请求是否成功
+            url = f"{self._rabbitmq_api_url}exchanges"
+            response = requests.get(url, auth=self._auth, timeout=10)
+            response.raise_for_status()
+
             exchange_info = response.json()
             if exchange_name:
                 return [q for q in exchange_info if q['name'] == exchange_name]
-            else:
-                if is_amq:
-                    return exchange_info
-                else:
-                    return [q for q in exchange_info if "amq" not in q['name']]
-        except requests.RequestException as e:
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying i")
-        return []
 
-    def get_connections(self, host=None, user=None):
+            if is_amq:
+                return exchange_info
+            else:
+                return [q for q in exchange_info if "amq" not in q['name']]
+
+        except requests.RequestException as e:
+            rabbitmq_logger.error(f"Failed to get exchanges: {e}")
+            return []
+
+    def get_connections(self, host: str = None, user: str = None) -> list:
         """
         获取当前RabbitMQ服务器上的连接列表。
 
@@ -510,29 +677,23 @@ class RabbitManager:
         - 如果没有提供过滤条件，则返回所有连接的列表。
         - 在发生请求错误时，返回空列表，并记录错误信息。
         """
-        # 构造请求连接的URL
-        url = f"{self._rabbitMQ_api_url}connections"
         try:
-            # 发送HTTP GET请求获取连接信息
-            response = requests.get(url, auth=self._auth)
-            # 检查请求是否成功
+            url = f"{self._rabbitmq_api_url}connections"
+            response = requests.get(url, auth=self._auth, timeout=10)
             response.raise_for_status()
-            # 解析响应中的JSON数据，获取连接列表
-            connections = response.json()
-            # 根据提供的主机或用户参数进行过滤
-            if host:
-                return [q for q in connections if q['host'] == host]
-            if user:
-                return [q for q in connections if q['user'] == user]
-            # 返回所有连接的列表
-            return connections
-        except requests.RequestException as e:
-            # 在发生请求错误时，记录错误信息
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying in {self._retry_interval} seconds.")
-        # 在发生错误时返回空列表
 
-    def get_channels(self, user=None, state=None):
+            connections = response.json()
+            if host:
+                return [q for q in connections if q.get('host') == host]
+            if user:
+                return [q for q in connections if q.get('user') == user]
+            return connections
+
+        except requests.RequestException as e:
+            rabbitmq_logger.error(f"Failed to get connections: {e}")
+            return []
+
+    def get_channels(self, user: str = None, state: str = None) -> list:
         """
         获取当前RabbitMQ服务器上的通道列表。
 
@@ -547,39 +708,26 @@ class RabbitManager:
         - 如果没有提供过滤条件，则返回所有通道的列表。
         - 在发生请求错误时，返回空列表，并记录错误信息。
         """
-        # 构造请求通道的URL
-        url = f"{self._rabbitmq_api_url}channels"
         try:
-            # 发送HTTP GET请求获取通道信息
-            response = requests.get(url, auth=self._auth)
-            # 检查请求是否成功
+            url = f"{self._rabbitmq_api_url}channels"
+            response = requests.get(url, auth=self._auth, timeout=10)
             response.raise_for_status()
-            # 解析响应中的JSON数据，获取通道列表
-            channels = response.json()
-            # 根据提供的通道名称或状态进行过滤
-            if user:
-                return [c for c in channels if c['user'] == user]
-            if state:
-                return [c for c in channels if c['state'] == state]
-            # 返回所有通道的列表
-            return channels
-        except requests.RequestException as e:
-            # 在发生请求错误时，记录错误信息
-            rabbitmq_logger.error(
-                f"Failed to connect to RabbitMQ Management API, retrying in {self._retry_interval} seconds.")
-        # 在发生错误时返回空列表
-        return []
 
-    def migrate_rabbitmq(
-        self,
-        source_config,
-        target_config,
-        exchange_list: list | None = None,
-        queue_list: list | None = None,
-        not_exchange_list: list | None = None,
-        not_queue_list: list | None = None,
-        is_reserve=False,
-    ):
+            channels = response.json()
+            if user:
+                return [c for c in channels if c.get('user') == user]
+            if state:
+                return [c for c in channels if c.get('state') == state]
+            return channels
+
+        except requests.RequestException as e:
+            rabbitmq_logger.error(f"Failed to get channels: {e}")
+            return []
+
+    def migrate_rabbitmq(self, source_config: RabbitConfig, target_config: RabbitConfig,
+                         exchange_list: list = None, queue_list: list = None,
+                         not_exchange_list: list = None, not_queue_list: list = None,
+                         is_reserve: bool = False):
         """
         迁移RabbitMQ的数据。
 
@@ -598,43 +746,65 @@ class RabbitManager:
         返回:
         无返回值。
         """
-        # 创建源RabbitMQ管理器
-        source_rabbitmq_manager = RabbitManager(rabbit_config=source_config)
-        # 创建目标RabbitMQ管理器
-        target_rabbitmq_manager = RabbitManager(rabbit_config=target_config)
+        source_manager = RabbitManager(rabbit_config=source_config)
+        target_manager = RabbitManager(rabbit_config=target_config)
 
-        # 获取并筛选需要迁移的交换机
-        source_all_exchanges = source_rabbitmq_manager.get_all_exchanges()
+        source_all_exchanges = source_manager.get_all_exchanges()
+
+        # 过滤交换机
         if not_exchange_list:
-            source_all_exchanges = [exchange for exchange in source_all_exchanges if exchange['name'] not in not_exchange_list]
+            source_all_exchanges = [ex for ex in source_all_exchanges if ex['name'] not in not_exchange_list]
         if exchange_list:
-            source_all_exchanges = [exchange for exchange in source_all_exchanges if exchange['name'] in exchange_list]
+            source_all_exchanges = [ex for ex in source_all_exchanges if ex['name'] in exchange_list]
 
-        # 迁移交换机及其绑定的队列
         for source_exchange in source_all_exchanges:
-            source_bing_queues = source_rabbitmq_manager.get_exchange_bindings(source_exchange['name'])
+            source_bind_queues = source_manager.get_exchange_bindings(source_exchange['name'])
+
+            # 过滤队列
             if not_queue_list:
-                source_bing_queues = [queue for queue in source_bing_queues if
-                                        queue['routing_key'] not in not_queue_list]
+                source_bind_queues = [q for q in source_bind_queues if q['routing_key'] not in not_queue_list]
             if queue_list:
-                source_bing_queues = [queue for queue in source_bing_queues if
-                                        queue['routing_key'] in queue_list]
+                source_bind_queues = [q for q in source_bind_queues if q['routing_key'] in queue_list]
 
-            # 开始迁移
-            for source_queue in source_bing_queues:
-                # 在目标RabbitMQ声明交换机
-                target_rabbitmq_manager.channel.exchange_declare(exchange=source_exchange['name'], exchange_type='direct', durable=True)
-                # 在源RabbitMQ声明队列
-                source_rabbitmq_manager_queue = source_rabbitmq_manager.channel.queue_declare(queue=source_queue['routing_key'],durable=True)
-                # 迁移消息
-                for _ in range(source_rabbitmq_manager_queue.method.message_count):
-                    source_rabbitmq_manager.consume_tasks(exchange_name=source_exchange['name'], queue_name=source_queue['routing_key'])
-                    target_rabbitmq_manager.send_task(source_rabbitmq_manager.received_body, source_exchange['name'],source_queue['routing_key'])
-                    # 如果需要保留源数据，则重新发送消息到源RabbitMQ
-                    if is_reserve:
-                        source_rabbitmq_manager.send_task(source_rabbitmq_manager.received_body,source_exchange['name'], source_queue['routing_key'])
+            for source_queue in source_bind_queues:
+                try:
+                    target_manager.channel.exchange_declare(
+                        exchange=source_exchange['name'],
+                        exchange_type='direct',
+                        durable=True
+                    )
 
-    def get_queue_num(self, queue_name):
+                    source_queue_info = source_manager.channel.queue_declare(
+                        queue=source_queue['routing_key'],
+                        durable=True
+                    )
+
+                    for _ in range(source_queue_info.method.message_count):
+                        source_manager.consume_tasks(
+                            exchange_name=source_exchange['name'],
+                            queue_name=source_queue['routing_key']
+                        )
+
+                        target_manager.send_task(
+                            source_manager.received_body,
+                            source_exchange['name'],
+                            source_queue['routing_key']
+                        )
+
+                        if is_reserve:
+                            source_manager.send_task(
+                                source_manager.received_body,
+                                source_exchange['name'],
+                                source_queue['routing_key']
+                            )
+
+                except Exception as e:
+                    rabbitmq_logger.error(f"Failed to migrate queue {source_queue['routing_key']}: {e}")
+
+        source_manager.close()
+        target_manager.close()
+
+    def get_queue_num(self, queue_name: str) -> int:
         """
         声明队列并获取队列中的消息数量。
 
@@ -644,95 +814,34 @@ class RabbitManager:
         返回:
         int: 队列中的消息数量。
         """
-        # 声明队列并获取队列信息
-        queue = self.channel.queue_declare(queue=queue_name, durable=True)
-        # 获取队列中的消息数量
-        queue_num = queue.method.message_count
-        return queue_num
+        try:
+            queue = self.channel.queue_declare(queue=queue_name, durable=True)
+            return queue.method.message_count
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to get queue count for {queue_name}: {e}")
+            return 0
 
-    def get_queue_consumer_count(self, queue_name):
+    def get_queue_consumer_count(self, queue_name: str) -> int:
         """
         获取指定队列的消费者数量
 
         :param queue_name: 队列名称，用于指定要查询的队列
         :return: 返回指定队列的消费者数量
         """
-        # 声明队列并获取队列信息
-        queue = self.channel.queue_declare(queue=queue_name, durable=True)
-        # 获取队列中的消费者数量
-        consumer_count = queue.method.consumer_count
-        return consumer_count
+        try:
+            queue = self.channel.queue_declare(queue=queue_name, durable=True)
+            return queue.method.consumer_count
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to get consumer count for {queue_name}: {e}")
+            return 0
 
-
-
-class RabbitConfig:
-    def __init__(self, **keyword):
-        """
-        初始化 RabbitMQ 配置
-
-        :param db_settings: 包含 RabbitMQ 配置的设置对象
-        """
-        self.host = keyword.get("host", mqSettings.host)
-        self.port = keyword.get("port", mqSettings.port)
-        self.user = keyword.get("user", mqSettings.user)
-        self.password = keyword.get("password", mqSettings.password)
-        self.api_port = keyword.get("api_port", mqSettings.api_port)
-        self.virtual_host = keyword.get("virtual_host", mqSettings.virtual_host)
-        self.connection_attempts = keyword.get("connection_attempts", mqSettings.connection_attempts)
-        self.retry_delay = keyword.get("retry_delay", mqSettings.retry_delay)
-        self.socket_timeout = keyword.get("socket_timeout", mqSettings.socket_timeout)
-        self.max_rebbitmq_prefetch_count = keyword.get("max_rebbitmq_prefetch_count",
-                                                       mqSettings.prefetch_count)
-        self.max_consumer = keyword.get("max_consumer", mqSettings.max_consumer)
-        self.heartbeat = keyword.get("heartbeat", mqSettings.heartbeat)
-        self.blocked_connection_timeout = keyword.get("blocked_connection_timeout", mqSettings.blocked_connection_timeout)
-        self.rabbitmq_pool_max_overflow = keyword.get("rabbitmq_pool_max_overflow", mqSettings.pool_max_overflow)
-
-    def to_dict(self):
-        """
-        将配置转换为字典
-
-        :return: 包含所有配置的字典
-        """
-        return {
-            "host": self.host,
-            "port": self.port,
-            "user": self.user,
-            "password": self.password,
-            "api_port": self.api_port,
-            "virtual_host":self.virtual_host,
-            "connection_attempts": self.connection_attempts,
-            "retry_delay": self.retry_delay,
-            "socket_timeout": self.socket_timeout,
-            "max_rebbitmq_prefetch_count": self.max_rebbitmq_prefetch_count,
-            "max_consumer": self.max_consumer,
-            "heartbeat": self.heartbeat,
-            "rabbitmq_pool_max_overflow": self.rabbitmq_pool_max_overflow,
-            "blocked_connection_timeout":self.blocked_connection_timeout
-        }
 
 class RabbitMQConnectionPool:
     """
-    RabbitMQ连接池类，用于管理和复用RabbitMQ连接。
-
-    属性:
-    - _pool_size (int): 连接池的最大连接数。
-    - _connections (list): 存储连接的列表，每个元素是一个 (connection, lock) 元组。
-    - _params (pika.ConnectionParameters): 连接参数。
-    - _lock (threading.Lock): 用于保护连接池的锁。
-
-    方法:
-    - __init__: 初始化连接池。
-    - _create_connection: 创建一个新的RabbitMQ连接。
-    - _get_connection: 获取一个可用的RabbitMQ连接。
-    - _release_connection: 释放一个RabbitMQ连接回连接池。
-    - close: 关闭所有连接并清理资源。
-    - connection: 上下文管理器，用于 `with` 语句。
-    - get_connection: 获取一个RabbitMQ连接。
-    - release_connection: 释放一个RabbitMQ连接。
+    RabbitMQ连接池类，用于管理和复用RabbitMQ连接
     """
 
-    def __init__(self, rabbit_config, pool_size=10):
+    def __init__(self, rabbit_config: RabbitConfig, pool_size: int = 10):
         """
         初始化RabbitMQ连接池。
 
@@ -744,12 +853,14 @@ class RabbitMQConnectionPool:
         - virtual_host (str): 虚拟主机，默认为 '/'。
         - pool_size (int): 连接池大小，默认为 10。
         """
-        self._pool_size = pool_size
-        self._connections = []
+        self.pool_size = pool_size
         self.rabbit_config = rabbit_config
-        self._lock = threading.Lock()
+        self._connections = []
+        self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
+        self._active_connections = 0
 
-    def _create_connection(self):
+    def _create_connection(self) -> RabbitManager:
         """
         创建一个新的RabbitMQ连接。
 
@@ -758,37 +869,78 @@ class RabbitMQConnectionPool:
         """
         return RabbitManager(self.rabbit_config)
 
-    def _get_connection(self):
-        """
-        获取一个可用的RabbitMQ连接。
+    def _is_connection_valid(self, connection: RabbitManager) -> bool:
+        """检查连接是否有效"""
+        try:
+            return (connection.connection and connection.connection.is_open and
+                    connection.channel and connection.channel.is_open)
+        except Exception:
+            return False
 
-        返回:
-        - connection (pika.BlockingConnection): 可用的RabbitMQ连接。
+    @contextlib.contextmanager
+    def get_connection(self) -> Generator[RabbitManager | Any, Any, None]:
         """
-        with self._lock:
+        获取一个RabbitMQ连接（上下文管理器方式）
+        """
+        connection = None
+
+        with self._condition:
+            # 等待可用连接
+            while len(self._connections) == 0 and self._active_connections >= self.pool_size:
+                self._condition.wait()
+
             if self._connections:
-                # 随机从连接池中获取一个连接
-                index = random.randint(0, len(self._connections) - 1)
-                connection, lock = self._connections.pop(index)
-                # 检查当前连接的状态，如果连接或通道任一未开启，则关闭旧连接并创建新的连接
-                if not (connection.connection.is_open and connection.channel.is_open):
-                    try:
-                        connection.close()
-                    except Exception as e:
-                        print(f"Failed to close connection: {e}")
-                    connection = self._create_connection()
-                lock.acquire()  # 加锁
-                return connection, lock
-            elif len(self._connections) < self._pool_size:
-                # 创建新的连接
+                connection, lock = self._connections.pop()
+            else:
                 connection = self._create_connection()
                 lock = threading.Lock()
-                lock.acquire()  # 加锁
+
+            self._active_connections += 1
+
+        try:
+            # 检查连接有效性
+            if not self._is_connection_valid(connection):
+                connection.close()
+                connection = self._create_connection()
+
+            lock.acquire()
+            yield connection
+
+        except Exception as e:
+            rabbitmq_logger.error(f"Error using connection: {e}")
+            # 创建新连接替换失效的连接
+            connection.close()
+            connection = self._create_connection()
+            yield connection
+
+        finally:
+            lock.release()
+            with self._condition:
+                self._active_connections -= 1
+                if self._is_connection_valid(connection):
+                    self._connections.append((connection, lock))
+                else:
+                    connection.close()
+                self._condition.notify()
+
+    def get_connection_nowait(self) -> tuple:
+        """立即获取连接（不等待）"""
+        with self._condition:
+            if self._connections:
+                connection, lock = self._connections.pop()
+                self._active_connections += 1
+                lock.acquire()
+                return connection, lock
+            elif self._active_connections < self.pool_size:
+                connection = self._create_connection()
+                lock = threading.Lock()
+                self._active_connections += 1
+                lock.acquire()
                 return connection, lock
             else:
-                raise Exception("Too many connections, connection pool is full")
+                raise Exception("Connection pool exhausted")
 
-    def _release_connection(self, connection, lock):
+    def release_connection(self, connection: RabbitManager, lock: threading.Lock):
         """
         释放一个RabbitMQ连接回连接池。
 
@@ -796,73 +948,82 @@ class RabbitMQConnectionPool:
         - connection (pika.BlockingConnection): 要释放的RabbitMQ连接。
         - lock (threading.Lock): 连接的锁。
         """
-        with self._lock:
-            lock.release()  # 释放锁
-            self._connections.append((connection, lock))
-
-    def close(self,connection=None):
-        """
-        关闭所有连接并清理资源。
-        """
-        with self._lock:
-            if connection:
-                connection.close()
-            else:
-                for connection, lock in self._connections:
-                    connection.close()
-                self._connections.clear()
-
-    @contextlib.contextmanager
-    def connection(self):
-        """
-        上下文管理器，用于 `with` 语句。
-
-        使用示例:
-        """
-        # 进入 with 语句块时执行的代码
-        conn, lock = self._get_connection()
         try:
-            yield conn
-        except (pika.exceptions.ChannelWrongStateError, pika.exceptions.ConnectionWrongStateError) as e:
-            print(f"Connection error: {e}")
-            # 尝试重新获取连接
-            conn, lock = self._get_connection()
-        finally:
-            # 退出 with 语句块时执行的代码
-            self._release_connection(conn, lock)
+            lock.release()
+            with self._condition:
+                if self._is_connection_valid(connection):
+                    self._connections.append((connection, lock))
+                else:
+                    connection.close()
+                self._active_connections -= 1
+                self._condition.notify()
+        except Exception as e:
+            rabbitmq_logger.error(f"Error releasing connection: {e}")
+            connection.close()
 
-    def get_connection(self):
-        """
-        获取一个RabbitMQ连接。
+    def close_all(self):
+        """关闭所有连接"""
+        with self._condition:
+            for connection, lock in self._connections:
+                try:
+                    connection.close()
+                except Exception as e:
+                    rabbitmq_logger.debug(f"Error closing connection: {e}")
+            self._connections.clear()
+            self._active_connections = 0
 
-        返回:
-        - connection (pika.BlockingConnection): 可用的RabbitMQ连接。
-        """
-        conn, lock = self._get_connection()
-        return conn, lock
+    def get_pool_status(self) -> dict:
+        """获取连接池状态"""
+        with self._condition:
+            return {
+                "total_size": self.pool_size,
+                "available": len(self._connections),
+                "active": self._active_connections,
+                "max_used": self._active_connections - len(self._connections)
+            }
 
-    def release_connection(self, connection, lock):
-        """
-        释放一个RabbitMQ连接。
+    def __del__(self):
+        """析构函数，确保连接被关闭"""
+        self.close_all()
 
-        参数:
-        - connection (pika.BlockingConnection): 要释放的RabbitMQ连接。
-        - lock (threading.Lock): 连接的锁。
-        """
-        self._release_connection(connection, lock)
 
-rabbit_config = RabbitConfig().to_dict()
-rabbit_pool = RabbitMQConnectionPool(rabbit_config,pool_size=rabbit_config.get("rabbitmq_pool_max_overflow",10))
-
+# 全局配置
+# rabbit_config = RabbitConfig()
+# RabbitPool = RabbitMQConnectionPool(
+#     RabbitConfig(),
+#     pool_size=RabbitConfig().config_to_dict().get("rabbitmq_pool_max_overflow", 10)
+# )
 
 __all__ = [
-    "rabbit_pool",
+    # "RabbitPool",
     "RabbitConfig",
     "RabbitManager",
-    "rabbit_config",
     "RabbitMQConnectionPool",
 ]
 
+if __name__ == '__main__':
+    # 初始化
+    config = RabbitConfig()
 
+    # 使用特定键
+    config.use_key("task")
 
+    # 获取基本信息
+    exchange_name = config.get_exchange_name()
+    not_control_queues = config.get_not_control_queues()
 
+    # 获取队列配置
+    start_queues = config.get_start_monitoring_queues()
+    specific_queue = config.get_start_monitoring_queues("collection_comment")
+
+    # 检查配置类型
+    if config.is_start_monitoring_enabled():
+        print("启用了启动监控")
+
+    # 获取所有队列名称
+    all_queues = config.get_all_queue_names()
+
+    # 链式调用
+    queue_info = (RabbitConfig()
+                  .use_key("task")
+                  .get_start_monitoring_queues("collection_comment"))

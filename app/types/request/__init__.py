@@ -9,4 +9,5 @@ Copyright (c) 2024 一云天网络科技
 All rights reserved.
 """
 from .general import *
+from .rabbitmq import *
 from app.types.request.v1.system.manage import *
