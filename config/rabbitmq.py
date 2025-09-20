@@ -11,7 +11,6 @@ from typing import Optional, Any, Union, Generator
 from app.logs import rabbitmq_logger
 from config.settings import mqSettings
 
-from lib.mq_consumer import *
 
 class RabbitConfig:
     def __init__(self, rabbit_config: dict = mqSettings.RabbitMq):
@@ -104,39 +103,6 @@ class RabbitConfig:
             return queue_obj.__dict__ if queue_obj and hasattr(queue_obj, '__dict__') else queue_obj
         return {name: q.__dict__ if hasattr(q, '__dict__') else q for name, q in queues.items()}
 
-    def get_config_types(self) -> list:
-        """
-        获取配置类型列表
-
-        :return: 配置类型列表
-        """
-        config = self.get_config()
-        return config.get('type', [])
-
-    def has_config_type(self, config_type: str) -> bool:
-        """
-        检查是否包含指定的配置类型
-
-        :param config_type: 配置类型
-        :return: 是否包含
-        """
-        return config_type in self.get_config_types()
-
-    def is_start_monitoring_enabled(self) -> bool:
-        """
-        检查是否启用了启动监控
-
-        :return: 是否启用
-        """
-        return self.has_config_type('start_monitoring')
-
-    def is_monitor_queue_enabled(self) -> bool:
-        """
-        检查是否启用了队列监控
-
-        :return: 是否启用
-        """
-        return self.has_config_type('monitor_queue')
 
     def get_all_queue_names(self, include_not_control: bool = False) -> list:
         """
@@ -159,35 +125,24 @@ class RabbitConfig:
 
         return list(set(queue_names))  # 去重
 
-    def get_is_create_task_by_exchange_and_queue(self, exchange_name: str, queue_name: str) -> bool:
+    def get_dict_exchange_and_queue(self, exchange_name: str, queue_name: str) -> dict:
         """
-        通过交换机名和队列名获取是否需要创建key（无需知道key）
+        通过交换机名和队列名获取是对应数据（无需知道key）
 
         :param exchange_name: 交换机名称
         :param queue_name: 队列名称
         :return:
         """
+        result = {}
         for key, config_value in self.rabbit_config.items():
-            # 将配置对象转换为字典
-            config_dict = config_value.__dict__ if hasattr(config_value, '__dict__') else config_value
-
             # 检查交换机名称是否匹配
-            if config_dict.get('exchange_name') == exchange_name:
-                # 检查启动监控队列
-                start_queues = config_dict.get('queue_start_monitoring', {})
-                for q_key, q_value in start_queues.items():
-                    q_dict = q_value.__dict__ if hasattr(q_value, '__dict__') else q_value
-                    if q_dict.get('queue_name') == queue_name:
-                        return True
+            if config_value.exchange_name == exchange_name:
+                for start_key,start_value in config_value.queue_start_monitoring.items():
+                    if start_value.queue_name == queue_name:
+                        result[key] = start_value
+                        return  result
 
-                # 检查监控队列
-                monitor_queues = config_dict.get('queue_monitor_queue', [])
-                for queue in monitor_queues:
-                    q_dict = queue.__dict__ if hasattr(queue, '__dict__') else queue
-                    if q_dict.get('queue_name') == queue_name:
-                        return True
-
-        return False
+        return result
 
 class RabbitManager:
     def __init__(self, rabbit_config: RabbitConfig):
@@ -221,7 +176,7 @@ class RabbitManager:
         self._is_init_exchange_and_queue = False
 
         # 连接
-        self.connection, self.channel = self.connect_to_rabbitmq()
+        self.connection, self.channel = self._connect_to_rabbitmq()
     def _build_create_key_dict(self, rabbit_config):
         for key, config_value in rabbit_config.items():
             exchange_name = config_value.exchange_name
@@ -272,7 +227,8 @@ class RabbitManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def create_task(self, function_name: str, *args, **kwargs) -> dict:
+    @staticmethod
+    def create_task(function_name: str, *args, **kwargs) -> dict:
         """创建任务字典"""
         return {
             "function_name": function_name,
@@ -280,7 +236,7 @@ class RabbitManager:
             "kwargs": kwargs
         }
 
-    def connect_to_rabbitmq(self, max_retries: int = 5, retry_delay: int = 5):
+    def _connect_to_rabbitmq(self, max_retries: int = 5, retry_delay: int = 5):
         """
         连接到RabbitMQ服务器。
 
@@ -361,7 +317,7 @@ class RabbitManager:
             rabbitmq_logger.error(f"Failed to send task: {e}")
             raise
 
-    def process_task(self, ch, method, properties, body):
+    def _process_task(self, ch, method, properties, body):
         """
         处理来自队列的任务。
 
@@ -399,7 +355,7 @@ class RabbitManager:
             ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
         except Exception as e:
             rabbitmq_logger.error(f"Error processing task: {type(e).__name__} - {e}, body: {body}")
-            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True)
+            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
         else:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -469,7 +425,7 @@ class RabbitManager:
             if not self._is_init_exchange_and_queue:
                 self._init_exchange_and_queue(exchange_name=exchange_name, queue_name=queue_name)
 
-            self.channel.basic_consume(queue=queue_name, on_message_callback=self.process_task)
+            self.channel.basic_consume(queue=queue_name, on_message_callback=self._process_task)
             self.channel.start_consuming()
 
         except Exception as e:
@@ -712,6 +668,36 @@ class RabbitManager:
             rabbitmq_logger.error(f"Failed to get channels: {e}")
             return []
 
+    def get_queue_num(self, queue_name: str) -> int:
+        """
+        声明队列并获取队列中的消息数量。
+
+        参数:
+        queue_name (str): 队列的名称。
+
+        返回:
+        int: 队列中的消息数量。
+        """
+        try:
+            queue = self.channel.queue_declare(queue=queue_name, durable=True)
+            return queue.method.message_count
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to get queue count for {queue_name}: {e}")
+            return 0
+
+    def get_queue_consumer_count(self, queue_name: str) -> int:
+        """
+        获取指定队列的消费者数量
+
+        :param queue_name: 队列名称，用于指定要查询的队列
+        :return: 返回指定队列的消费者数量
+        """
+        try:
+            queue = self.channel.queue_declare(queue=queue_name, durable=True)
+            return queue.method.consumer_count
+        except Exception as e:
+            rabbitmq_logger.error(f"Failed to get consumer count for {queue_name}: {e}")
+            return 0
     def migrate_rabbitmq(self, source_config: RabbitConfig, target_config: RabbitConfig,
                          exchange_list: list = None, queue_list: list = None,
                          not_exchange_list: list = None, not_queue_list: list = None,
@@ -791,38 +777,6 @@ class RabbitManager:
 
         source_manager.close()
         target_manager.close()
-
-    def get_queue_num(self, queue_name: str) -> int:
-        """
-        声明队列并获取队列中的消息数量。
-
-        参数:
-        queue_name (str): 队列的名称。
-
-        返回:
-        int: 队列中的消息数量。
-        """
-        try:
-            queue = self.channel.queue_declare(queue=queue_name, durable=True)
-            return queue.method.message_count
-        except Exception as e:
-            rabbitmq_logger.error(f"Failed to get queue count for {queue_name}: {e}")
-            return 0
-
-    def get_queue_consumer_count(self, queue_name: str) -> int:
-        """
-        获取指定队列的消费者数量
-
-        :param queue_name: 队列名称，用于指定要查询的队列
-        :return: 返回指定队列的消费者数量
-        """
-        try:
-            queue = self.channel.queue_declare(queue=queue_name, durable=True)
-            return queue.method.consumer_count
-        except Exception as e:
-            rabbitmq_logger.error(f"Failed to get consumer count for {queue_name}: {e}")
-            return 0
-
 
 class RabbitMQConnectionPool:
     """
